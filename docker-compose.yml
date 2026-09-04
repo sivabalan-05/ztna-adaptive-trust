@@ -1,0 +1,116 @@
+# AI-Based Zero Trust Network Access — full stack.
+# Everything below runs offline once the four base images are present locally.
+name: ztna
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ztna-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ztna}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ztna_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-ztna}
+      TZ: ${TZ:-Asia/Kolkata}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ztna_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ztna} -d ${POSTGRES_DB:-ztna}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: ztna-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ztna_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ztna-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ztna}:${POSTGRES_PASSWORD:-ztna_dev_password}@db:5432/${POSTGRES_DB:-ztna}
+      REDIS_URL: redis://redis:6379/0
+      TZ: ${TZ:-Asia/Kolkata}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      - ./scripts:/app/scripts
+      - ./data:/data
+      - ztna_models:/models
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ztna-worker
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ztna}:${POSTGRES_PASSWORD:-ztna_dev_password}@db:5432/${POSTGRES_DB:-ztna}
+      REDIS_URL: redis://redis:6379/0
+      TZ: ${TZ:-Asia/Kolkata}
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+      - ztna_models:/models
+    command: ["python", "-m", "app.workers.runner"]
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ztna-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-ws://localhost:8000}
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
+volumes:
+  ztna_pgdata:
+  ztna_redisdata:
+  ztna_models:

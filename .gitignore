@@ -1,0 +1,44 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.db
+*.sqlite3
+models/
+*.joblib
+data/*.mmdb
+node_modules/
+dist/
+.vite/
+.DS_Store
+.pytest_cache/
+.coverage
+htmlcov/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+*.db-wal
+*.db-shm
+
+# Ruflo local secrets and runtime data
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+# Agent tooling, generated into this directory by ruflo / claude-flow.
+# Not part of the project: 244 generated command and agent files, a 1.5 MB
+# vector store, and a CLAUDE.md that configures the tool rather than describing
+# this codebase. Left on disk, kept out of the repository.
+.claude-flow/
+.claude/
+.agents/
+.swarm/
+.hive-mind/
+.mcp.json
+memory/
+coordination/
+claude-flow*
+ruvector.db
+CLAUDE.md

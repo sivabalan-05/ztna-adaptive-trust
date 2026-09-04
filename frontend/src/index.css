@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  /* Risk bands are a STATUS palette, not a categorical one: they encode a
+     state (good / warning / serious / critical), not an identity. Four ordered
+     warm-to-cool hues cannot be separated by hue alone — validated adjacent
+     pairs fall below the normal-vision floor — so every use pairs the colour
+     with its band name in text. Colour never carries the meaning by itself. */
+  --color-risk-low: #0ca30c;
+  --color-risk-medium: #fab219;
+  --color-risk-high: #ec835a;
+  --color-risk-critical: #d03b3b;
+
+  /* Single-hue ramp for magnitude (trust over time, factor contributions). */
+  --color-trend: #2563eb;
+
+  --color-shell: #0f172a;
+  --color-shell-soft: #1e293b;
+  --color-surface: #fcfcfb;
+
+  /* Recessive chart chrome. */
+  --color-grid: #e7e5e4;
+  --color-ink-muted: #78716c;
+}
+
+html, body, #root { height: 100%; }
+body { margin: 0; background: #f8fafc; color: #0f172a; }
