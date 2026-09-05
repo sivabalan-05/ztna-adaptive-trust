@@ -86,6 +86,14 @@ def roles(db: Session) -> dict[str, Role]:
             max_sensitivity_ordinal=3,
             permissions=["devices:read", "devices:approve", "devices:revoke"],
         ),
+        "security_analyst": Role(
+            name="security_analyst", description="Security analyst", is_admin=False,
+            max_sensitivity_ordinal=2,
+            permissions=[
+                "users:read", "devices:read", "policies:read", "sessions:read",
+                "sessions:revoke", "alerts:read", "audit:read", "resources:read",
+            ],
+        ),
         "employee": Role(
             name="employee", description="Employee", is_admin=False,
             max_sensitivity_ordinal=2, permissions=["resources:read"],
@@ -128,6 +136,25 @@ def admin(db: Session, roles: dict[str, Role]) -> User:
         hashed_password=hash_password(PASSWORD),
         password_strength=92,
         role_id=roles["admin"].id,
+        mfa_enabled=True,
+        mfa_secret=mfa.generate_secret(),
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+@pytest.fixture
+def analyst(db: Session, roles: dict[str, Role]) -> User:
+    """A read-and-revoke operator: no users:write, no resources:write."""
+    row = User(
+        username="meera.nair",
+        email="meera.nair@ztna-demo.in",
+        full_name="Meera Nair",
+        department="Information Security",
+        hashed_password=hash_password(PASSWORD),
+        password_strength=88,
+        role_id=roles["security_analyst"].id,
         mfa_enabled=True,
         mfa_secret=mfa.generate_secret(),
     )
