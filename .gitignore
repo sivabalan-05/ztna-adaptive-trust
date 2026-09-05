@@ -5,7 +5,7 @@ venv/
 .env
 *.db
 *.sqlite3
-models/
+/models/
 *.joblib
 data/*.mmdb
 node_modules/
