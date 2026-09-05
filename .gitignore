@@ -42,3 +42,6 @@ coordination/
 claude-flow*
 ruvector.db
 CLAUDE.md
+
+# Uploaded resource files — content is per-installation, never committed
+storage/

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{(ROOT_DIR / 'ztna.db').as_posix()}"
     sql_echo: bool = False
     redis_url: str | None = None
+    #: Where uploaded resource files are written. Kept out of the database so
+    #: ztna.db stays small and portable; never served statically.
+    resource_storage_dir: Path = ROOT_DIR / "storage" / "resources"
 
     # --- Trust scoring weights (sum must be 100) ----------------------------
     trust_weight_identity: int = 25
