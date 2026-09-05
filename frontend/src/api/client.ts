@@ -122,11 +122,22 @@ export interface Health {
 
 export interface LoginChallenge {
   mfa_required: boolean;
-  mfa_token: string;
+  mfa_token: string | null;
   expires_in: number;
   session_id: string;
   device_known: boolean;
   device_status: string;
+  enrolment_required: boolean;
+  enrolment_token: string | null;
+}
+
+export interface MFAEnrolment {
+  secret: string;
+  provisioning_uri: string;
+  qr_code_svg_data_uri: string;
+  issuer: string;
+  digits: number;
+  interval_seconds: number;
 }
 
 export interface TokenResponse {
@@ -261,6 +272,25 @@ export const login = (username: string, password: string) =>
 export const verifyMfa = (mfa_token: string, code: string) =>
   api
     .post<TokenResponse>("/api/auth/mfa/verify", { mfa_token, code })
+    .then((r) => r.data);
+
+// First-login enrolment: the caller has no access token yet, only the
+// short-lived enrolment token from the login challenge, so it must be passed
+// explicitly rather than relying on the request interceptor's stored token.
+export const startEnrolment = (enrolmentToken: string) =>
+  api
+    .post<MFAEnrolment>("/api/auth/mfa/enrol/setup", null, {
+      headers: { Authorization: `Bearer ${enrolmentToken}` },
+    })
+    .then((r) => r.data);
+
+export const confirmEnrolment = (enrolmentToken: string, code: string) =>
+  api
+    .post<TokenResponse>(
+      "/api/auth/mfa/confirm/setup",
+      { code },
+      { headers: { Authorization: `Bearer ${enrolmentToken}` } },
+    )
     .then((r) => r.data);
 
 export const getMe = () => api.get<Me>("/api/auth/me").then((r) => r.data);

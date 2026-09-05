@@ -12,7 +12,8 @@ from app.core import rate_limit
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import (
-    Principal, get_principal, get_request_context, require_admin,
+    EnrolmentPrincipal, Principal, get_enrolment_principal, get_principal,
+    get_request_context, require_admin,
 )
 from app.core.security import estimate_password_strength, hash_password
 from app.external import mfa
@@ -94,6 +95,8 @@ def login(
         session_id=challenge.session_id,
         device_known=challenge.device_known,
         device_status=challenge.device_status,
+        enrolment_required=challenge.enrolment_required,
+        enrolment_token=challenge.enrolment_token,
     )
 
 
@@ -333,3 +336,69 @@ def confirm_mfa(
         ip_address=context.ip_address, payload={"username": user.username},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/mfa/enrol/setup",
+    response_model=MFAEnrolmentResponse,
+    summary="First-login only — generate a TOTP secret before an access token exists",
+)
+def enrol_mfa_setup(
+    enrolment: EnrolmentPrincipal = Depends(get_enrolment_principal),
+    db: Session = Depends(get_db),
+    context: RequestContext = Depends(get_request_context),
+) -> MFAEnrolmentResponse:
+    """The first-login counterpart to ``/mfa/enrol``, authorised by the
+    enrolment token issued at login instead of an access token — which an
+    account with no TOTP secret yet has no way to obtain."""
+    user = enrolment.user
+    secret = mfa.generate_secret()
+    user.mfa_secret = secret
+    user.mfa_confirmed_at = None
+
+    AuditService.record(
+        db, action="MFA_ENROLMENT_STARTED", actor_id=user.id,
+        actor_label=user.username, resource_type="user", resource_id=str(user.id),
+        ip_address=context.ip_address, payload={"username": user.username},
+    )
+
+    return MFAEnrolmentResponse(
+        secret=secret,
+        provisioning_uri=mfa.provisioning_uri(secret, user.username),
+        qr_code_svg_data_uri=mfa.qr_code_data_uri(secret, user.username),
+        issuer=settings.mfa_issuer,
+        digits=mfa.TOTP_DIGITS,
+        interval_seconds=mfa.TOTP_INTERVAL_SECONDS,
+    )
+
+
+@router.post(
+    "/mfa/confirm/setup",
+    response_model=TokenResponse,
+    summary="First-login only — confirm the code and complete sign-in",
+)
+def confirm_mfa_setup(
+    payload: MFAConfirmRequest,
+    enrolment: EnrolmentPrincipal = Depends(get_enrolment_principal),
+    db: Session = Depends(get_db),
+    context: RequestContext = Depends(get_request_context),
+) -> TokenResponse:
+    """Confirms the TOTP code and, in one step, finishes the login that was
+    pending since the password was accepted — no second round trip through
+    ``/login`` + ``/mfa/verify`` is needed."""
+    _guard("mfa", context.ip_address, rate_limit.MFA_LIMIT)
+    try:
+        tokens = AuthService.complete_enrolment(
+            db, enrolment.user, enrolment.session, payload.code, context
+        )
+    except AuthError as exc:
+        db.commit()
+        raise _auth_error(exc) from exc
+
+    return TokenResponse(
+        access_token=tokens.access_token,
+        refresh_token=tokens.refresh_token,
+        expires_in=tokens.expires_in,
+        session_id=tokens.session_id,
+        **tokens.extra,
+    )

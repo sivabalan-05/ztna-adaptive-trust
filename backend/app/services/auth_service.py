@@ -74,15 +74,23 @@ class RequestContext:
 
 @dataclass
 class LoginChallenge:
-    """Password accepted; MFA still required."""
+    """Password accepted; MFA (or first-time enrolment) still required.
+
+    Exactly one of ``mfa_token`` / ``enrolment_token`` is set, distinguished by
+    ``enrolment_required``: an account with no TOTP secret yet gets an
+    enrolment token instead of an MFA challenge, because it has nothing to
+    verify a code against.
+    """
 
     mfa_required: bool
-    mfa_token: str
+    mfa_token: str | None
     session_id: uuid.UUID
     device_id: uuid.UUID | None
     device_known: bool
     device_status: str
     expires_in: int
+    enrolment_required: bool = False
+    enrolment_token: str | None = None
 
 
 @dataclass
@@ -244,13 +252,22 @@ class AuthService:
         db.add(session)
         db.flush()
 
-        if not user.mfa_enabled or not user.mfa_secret:
-            raise AuthError(
-                "MFA is not enrolled for this account. Contact an administrator.",
-                "mfa_not_enrolled", 403,
+        # An account with no TOTP secret yet (every admin-created account,
+        # until it self-enrols) has nothing to verify a code against. It gets
+        # an enrolment token instead of an MFA challenge — narrow enough to
+        # authorise only the setup routes, but enough to escape the dead end
+        # of needing an access token to reach them.
+        enrolment_required = not user.mfa_secret
+        if enrolment_required:
+            enrolment_token, _, expires_at = jwt_service.create_enrolment_token(
+                user.id, session.id
             )
-
-        token, _, expires_at = jwt_service.create_mfa_token(user.id, session.id)
+            mfa_token = None
+        else:
+            mfa_token, _, expires_at = jwt_service.create_mfa_token(
+                user.id, session.id
+            )
+            enrolment_token = None
 
         AuditService.record(
             db, action="PASSWORD_ACCEPTED", actor_id=user.id,
@@ -261,7 +278,8 @@ class AuthService:
                 "device_known": not resolution.is_new,
                 "device_status": resolution.device.status.value,
                 "device_label": resolution.device.label,
-                "mfa_required": True,
+                "mfa_required": not enrolment_required,
+                "enrolment_required": enrolment_required,
                 "network": network.summary() if network else None,
             },
         )
@@ -286,13 +304,15 @@ class AuthService:
             )
 
         return LoginChallenge(
-            mfa_required=True,
-            mfa_token=token,
+            mfa_required=not enrolment_required,
+            mfa_token=mfa_token,
             session_id=session.id,
             device_id=resolution.device.id,
             device_known=not resolution.is_new,
             device_status=resolution.device.status.value,
             expires_in=int((expires_at - utcnow()).total_seconds()),
+            enrolment_required=enrolment_required,
+            enrolment_token=enrolment_token,
         )
 
     # -- MFA step ----------------------------------------------------------
@@ -340,6 +360,47 @@ class AuthService:
         # Correct code: the MFA token is single-use.
         jwt_service.revoke_jti(payload["jti"], payload.get("exp"))
 
+        return cls._issue_session_tokens(db, user, session, context, mfa="totp")
+
+    # -- first-login enrolment ----------------------------------------------
+
+    @classmethod
+    def complete_enrolment(
+        cls, db: Session, user: User, session: UserSession, code: str,
+        context: RequestContext,
+    ) -> TokenPair:
+        """Finish first-time MFA setup and, in the same step, complete the
+        login that was pending since the password was accepted.
+
+        The code just entered is the same proof of possession an
+        already-enrolled user gives at ``/mfa/verify`` — there is no separate
+        "activate MFA" step followed by a second, redundant login.
+        """
+        if not user.mfa_secret:
+            raise AuthError(
+                "Start enrolment first with POST /api/auth/mfa/enrol/setup.",
+                "enrolment_not_started", 409,
+            )
+        if not mfa.verify_code(user.mfa_secret, code):
+            raise AuthError("That code does not match.", "invalid_mfa_code")
+
+        user.mfa_enabled = True
+        user.mfa_confirmed_at = utcnow()
+        AuditService.record(
+            db, action="MFA_ENROLLED", actor_id=user.id, actor_label=user.username,
+            resource_type="user", resource_id=str(user.id),
+            ip_address=context.ip_address, payload={"username": user.username},
+        )
+
+        return cls._issue_session_tokens(db, user, session, context, mfa="totp-setup")
+
+    # -- shared tail: session -> issued tokens ------------------------------
+
+    @classmethod
+    def _issue_session_tokens(
+        cls, db: Session, user: User, session: UserSession,
+        context: RequestContext, *, mfa: str,
+    ) -> TokenPair:
         device = db.get(Device, session.device_id) if session.device_id else None
         fingerprint = device.fingerprint if device else None
 
@@ -379,7 +440,7 @@ class AuthService:
                 "session_id": str(session.id),
                 "device": device.label if device else None,
                 "device_status": device.status.value if device else None,
-                "mfa": "totp",
+                "mfa": mfa,
                 "trust_score": assessment.score if assessment else None,
                 "risk_level": assessment.risk_level.value if assessment else None,
             },

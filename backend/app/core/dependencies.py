@@ -158,6 +158,43 @@ def get_principal(
     )
 
 
+@dataclass
+class EnrolmentPrincipal:
+    """A caller holding a first-login enrolment token: password verified, no
+    session yet, authorised only for the enrolment-setup routes."""
+
+    user: User
+    session: UserSession
+
+
+def get_enrolment_principal(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> EnrolmentPrincipal:
+    if credentials is None or not credentials.credentials:
+        raise _unauthorised("Not authenticated.", "missing_token")
+
+    try:
+        payload = jwt_service.decode_token(credentials.credentials, "enrolment")
+    except jwt_service.TokenError as exc:
+        raise _unauthorised(exc.message, exc.code) from exc
+
+    user = db.get(User, uuid.UUID(payload["sub"]))
+    session = db.get(UserSession, uuid.UUID(payload["sid"]))
+    if user is None or session is None:
+        raise _unauthorised("Session no longer exists.", "session_not_found")
+    if session.status is not SessionStatus.ACTIVE:
+        raise _unauthorised(
+            f"Session is {session.status.value.lower()}.", "session_revoked"
+        )
+    if session.mfa_passed:
+        # Enrolment already completed for this session; the token has served
+        # its purpose and the caller should be using an access token instead.
+        raise _unauthorised("Enrolment is already complete.", "already_enrolled")
+
+    return EnrolmentPrincipal(user=user, session=session)
+
+
 def require_admin(principal: Principal = Depends(get_principal)) -> Principal:
     if not principal.is_admin:
         raise HTTPException(

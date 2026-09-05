@@ -1,12 +1,18 @@
 """JWT issue / verify / revoke.
 
-Three token types share one signing key but are never interchangeable, because
+Four token types share one signing key but are never interchangeable, because
 ``typ`` is checked on every decode:
 
-* ``access``  — 15 minutes, carries the session id and role, sent on every request;
-* ``refresh`` — 7 days, rotated on use, one live token per session;
-* ``mfa``     — 5 minutes, issued after a correct password and exchanged for the
+* ``access``    — 15 minutes, carries the session id and role, sent on every request;
+* ``refresh``   — 7 days, rotated on use, one live token per session;
+* ``mfa``       — 5 minutes, issued after a correct password and exchanged for the
   pair above once the TOTP code is verified. It grants no access on its own.
+* ``enrolment`` — 10 minutes, issued instead of an ``mfa`` token when the
+  account has no TOTP secret yet (an admin-created account that has never
+  self-enrolled). It authorises only ``/auth/mfa/enrol/setup`` and
+  ``/auth/mfa/confirm/setup`` — nothing else — so a first-time user can set up
+  MFA without first holding an access token, which would otherwise require
+  MFA to already be complete.
 
 Revocation is a denylist of ``jti`` values in the cache, each expiring exactly
 when the token it blocks would have expired, so the list cannot grow without
@@ -25,9 +31,10 @@ from jwt import ExpiredSignatureError, InvalidTokenError
 from app.core.cache import cache
 from app.core.config import settings
 
-TokenType = Literal["access", "refresh", "mfa"]
+TokenType = Literal["access", "refresh", "mfa", "enrolment"]
 
 MFA_TOKEN_EXPIRE_MINUTES = 5
+ENROLMENT_TOKEN_EXPIRE_MINUTES = 10
 _DENYLIST_PREFIX = "jwt:denylist:"
 
 
@@ -96,6 +103,18 @@ def create_mfa_token(
     """Short-lived proof that the password step succeeded. Grants no access."""
     return _encode(
         str(user_id), "mfa", timedelta(minutes=MFA_TOKEN_EXPIRE_MINUTES),
+        {"sid": str(session_id)},
+    )
+
+
+def create_enrolment_token(
+    user_id: uuid.UUID, session_id: uuid.UUID,
+) -> tuple[str, str, datetime]:
+    """Proof that the password step succeeded on an account with no TOTP
+    secret yet. Authorises only the first-login enrolment routes."""
+    return _encode(
+        str(user_id), "enrolment",
+        timedelta(minutes=ENROLMENT_TOKEN_EXPIRE_MINUTES),
         {"sid": str(session_id)},
     )
 

@@ -371,6 +371,115 @@ def test_admin_can_register_and_weak_passwords_are_refused(
     assert created.mfa_secret is None, "MFA must be enrolled by the user, not preset"
 
 
+def test_admin_created_account_can_complete_first_login_enrolment(
+    client: TestClient, admin: User, db: Session
+) -> None:
+    """A brand-new account has no MFA secret. Login must hand it an enrolment
+    token rather than a dead-end 403, and that token must be enough to
+    self-enrol and finish signing in — closing the loop that previously left
+    admin-created accounts permanently unable to authenticate."""
+    tokens = sign_in(client, admin)
+    created = client.post(
+        "/api/auth/register",
+        headers=auth_headers(tokens),
+        json={
+            "username": "fresh.hire", "email": "fresh.hire@ztna-demo.in",
+            "full_name": "Fresh Hire", "password": "A-Long-Enough-Passphrase-9!",
+        },
+    )
+    assert created.status_code == 201
+
+    challenge = client.post(
+        "/api/auth/login",
+        json={"username": "fresh.hire", "password": "A-Long-Enough-Passphrase-9!"},
+    ).json()
+    assert challenge["enrolment_required"] is True
+    assert challenge["mfa_required"] is False
+    assert challenge["enrolment_token"]
+
+    enrol = client.post(
+        "/api/auth/mfa/enrol/setup",
+        headers={"Authorization": f"Bearer {challenge['enrolment_token']}"},
+    )
+    assert enrol.status_code == 200
+    secret = enrol.json()["secret"]
+
+    finish = client.post(
+        "/api/auth/mfa/confirm/setup",
+        headers={"Authorization": f"Bearer {challenge['enrolment_token']}"},
+        json={"code": mfa.current_code(secret)},
+    )
+    assert finish.status_code == 200
+    session_tokens = finish.json()
+    assert session_tokens["access_token"]
+    assert session_tokens["refresh_token"]
+
+    me = client.get("/api/auth/me", headers=auth_headers(session_tokens))
+    assert me.status_code == 200
+    assert me.json()["username"] == "fresh.hire"
+
+    fresh_user = db.scalar(select(User).where(User.username == "fresh.hire"))
+    assert fresh_user is not None
+    assert fresh_user.mfa_confirmed_at is not None
+
+    # The account now behaves like any other enrolled user on a fresh login.
+    second_login = sign_in(client, fresh_user, "A-Long-Enough-Passphrase-9!")
+    assert second_login["access_token"]
+
+
+def test_enrolment_token_cannot_be_used_as_an_access_token(
+    client: TestClient, admin: User, db: Session
+) -> None:
+    tokens = sign_in(client, admin)
+    client.post(
+        "/api/auth/register",
+        headers=auth_headers(tokens),
+        json={
+            "username": "fresh.two", "email": "fresh.two@ztna-demo.in",
+            "full_name": "Fresh Two", "password": "A-Long-Enough-Passphrase-9!",
+        },
+    )
+    challenge = client.post(
+        "/api/auth/login",
+        json={"username": "fresh.two", "password": "A-Long-Enough-Passphrase-9!"},
+    ).json()
+
+    response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {challenge['enrolment_token']}"},
+    )
+    assert response.status_code == 401
+
+
+def test_confirm_setup_rejects_a_wrong_code(
+    client: TestClient, admin: User, db: Session
+) -> None:
+    tokens = sign_in(client, admin)
+    client.post(
+        "/api/auth/register",
+        headers=auth_headers(tokens),
+        json={
+            "username": "fresh.three", "email": "fresh.three@ztna-demo.in",
+            "full_name": "Fresh Three", "password": "A-Long-Enough-Passphrase-9!",
+        },
+    )
+    challenge = client.post(
+        "/api/auth/login",
+        json={"username": "fresh.three", "password": "A-Long-Enough-Passphrase-9!"},
+    ).json()
+    headers = {"Authorization": f"Bearer {challenge['enrolment_token']}"}
+    client.post("/api/auth/mfa/enrol/setup", headers=headers)
+
+    response = client.post(
+        "/api/auth/mfa/confirm/setup", headers=headers, json={"code": "000000"}
+    )
+    assert response.status_code == 401
+
+    fresh_user = db.scalar(select(User).where(User.username == "fresh.three"))
+    assert fresh_user is not None
+    assert fresh_user.mfa_confirmed_at is None
+
+
 def test_mfa_enrolment_round_trip(client: TestClient, admin: User, db: Session) -> None:
     tokens = sign_in(client, admin)
     enrol = client.post("/api/auth/mfa/enrol", headers=auth_headers(tokens))

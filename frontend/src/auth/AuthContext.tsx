@@ -3,19 +3,24 @@ import {
   type ReactNode,
 } from "react";
 import {
-  apiErrorMessage, getMe, login as apiLogin, logout as apiLogout, tokenStore,
-  verifyMfa as apiVerifyMfa, type LoginChallenge, type Me,
+  apiErrorMessage, confirmEnrolment as apiConfirmEnrolment, getMe,
+  login as apiLogin, logout as apiLogout, startEnrolment as apiStartEnrolment,
+  tokenStore, verifyMfa as apiVerifyMfa,
+  type LoginChallenge, type Me, type MFAEnrolment,
 } from "../api/client";
 
 interface AuthState {
   me: Me | null;
   challenge: LoginChallenge | null;
+  enrolment: MFAEnrolment | null;
   loading: boolean;
   error: string | null;
   terminated: string | null;
   clearTermination: () => void;
   signIn: (username: string, password: string) => Promise<void>;
   submitCode: (code: string) => Promise<void>;
+  beginEnrolment: () => Promise<void>;
+  confirmEnrolment: (code: string) => Promise<void>;
   signOut: () => Promise<void>;
   cancelChallenge: () => void;
   refreshMe: () => Promise<void>;
@@ -26,6 +31,7 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
+  const [enrolment, setEnrolment] = useState<MFAEnrolment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [terminated, setTerminated] = useState<string | null>(null);
@@ -63,25 +69,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshMe().finally(() => setLoading(false));
   }, [refreshMe]);
 
-  const signIn = useCallback(async (username: string, password: string) => {
-    setError(null);
-    try {
-      setChallenge(await apiLogin(username, password));
-    } catch (err) {
-      setChallenge(null);
-      setError(apiErrorMessage(err, "Sign-in failed."));
-      throw err;
-    }
+  // Fetches the QR code / secret for a first-login enrolment token. Kept
+  // separate from `signIn` so a user who navigates away mid-scan can also
+  // trigger it again through the public `beginEnrolment` action below.
+  const fetchEnrolmentDetails = useCallback(async (enrolmentToken: string) => {
+    setEnrolment(await apiStartEnrolment(enrolmentToken));
   }, []);
+
+  const signIn = useCallback(
+    async (username: string, password: string) => {
+      setError(null);
+      try {
+        const result = await apiLogin(username, password);
+        setChallenge(result);
+        setEnrolment(null);
+        if (result.enrolment_required && result.enrolment_token) {
+          await fetchEnrolmentDetails(result.enrolment_token);
+        }
+      } catch (err) {
+        setChallenge(null);
+        setEnrolment(null);
+        setError(apiErrorMessage(err, "Sign-in failed."));
+        throw err;
+      }
+    },
+    [fetchEnrolmentDetails],
+  );
 
   const submitCode = useCallback(
     async (code: string) => {
-      if (!challenge) return;
+      if (!challenge?.mfa_token) return;
       setError(null);
       try {
         const tokens = await apiVerifyMfa(challenge.mfa_token, code);
         tokenStore.set(tokens.access_token, tokens.refresh_token);
         setChallenge(null);
+        await refreshMe();
+      } catch (err) {
+        setError(apiErrorMessage(err, "Verification failed."));
+        throw err;
+      }
+    },
+    [challenge, refreshMe],
+  );
+
+  const beginEnrolment = useCallback(async () => {
+    if (!challenge?.enrolment_token) return;
+    setError(null);
+    try {
+      await fetchEnrolmentDetails(challenge.enrolment_token);
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not start enrolment."));
+      throw err;
+    }
+  }, [challenge, fetchEnrolmentDetails]);
+
+  const confirmEnrolment = useCallback(
+    async (code: string) => {
+      if (!challenge?.enrolment_token) return;
+      setError(null);
+      try {
+        const tokens = await apiConfirmEnrolment(challenge.enrolment_token, code);
+        tokenStore.set(tokens.access_token, tokens.refresh_token);
+        setChallenge(null);
+        setEnrolment(null);
         await refreshMe();
       } catch (err) {
         setError(apiErrorMessage(err, "Verification failed."));
@@ -101,10 +152,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenStore.clear();
     setMe(null);
     setChallenge(null);
+    setEnrolment(null);
   }, []);
 
   const cancelChallenge = useCallback(() => {
     setChallenge(null);
+    setEnrolment(null);
     setError(null);
   }, []);
 
@@ -112,12 +165,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      me, challenge, loading, error, terminated, clearTermination,
-      signIn, submitCode, signOut, cancelChallenge, refreshMe,
+      me, challenge, enrolment, loading, error, terminated, clearTermination,
+      signIn, submitCode, beginEnrolment, confirmEnrolment, signOut,
+      cancelChallenge, refreshMe,
     }),
     [
-      me, challenge, loading, error, terminated, clearTermination,
-      signIn, submitCode, signOut, cancelChallenge, refreshMe,
+      me, challenge, enrolment, loading, error, terminated, clearTermination,
+      signIn, submitCode, beginEnrolment, confirmEnrolment, signOut,
+      cancelChallenge, refreshMe,
     ],
   );
 

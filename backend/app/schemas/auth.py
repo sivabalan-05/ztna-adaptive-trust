@@ -22,14 +22,25 @@ class LoginRequest(BaseModel):
 
 
 class LoginChallengeResponse(BaseModel):
-    """Password accepted. No access is granted until MFA succeeds."""
+    """Password accepted. No access is granted until MFA — or, for a
+    never-enrolled account, first-time enrolment — succeeds."""
 
     mfa_required: bool = True
-    mfa_token: str = Field(description="Short-lived token for /auth/mfa/verify")
-    expires_in: int = Field(description="Seconds until the MFA token expires")
+    mfa_token: str | None = Field(
+        default=None, description="Short-lived token for /auth/mfa/verify"
+    )
+    expires_in: int = Field(description="Seconds until the token expires")
     session_id: uuid.UUID
     device_known: bool = Field(description="False when this fingerprint is new")
     device_status: str
+    enrolment_required: bool = Field(
+        default=False,
+        description="True when this account has no TOTP secret yet",
+    )
+    enrolment_token: str | None = Field(
+        default=None,
+        description="Short-lived token for /auth/mfa/enrol/setup and /confirm/setup",
+    )
 
 
 class MFAVerifyRequest(BaseModel):

@@ -3,7 +3,10 @@ import { useAuth } from "../auth/AuthContext";
 import { collectDeviceSignals } from "../lib/fingerprint";
 
 export default function LoginPage() {
-  const { challenge, error, signIn, submitCode, cancelChallenge } = useAuth();
+  const {
+    challenge, enrolment, error, signIn, submitCode, confirmEnrolment,
+    cancelChallenge,
+  } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -40,6 +43,18 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await submitCode(code);
+    } catch {
+      setCode("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSubmitEnrolmentCode(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await confirmEnrolment(code);
     } catch {
       setCode("");
     } finally {
@@ -109,6 +124,80 @@ export default function LoginPage() {
                 className="w-full rounded-lg bg-shell px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
               >
                 {busy ? "Verifying…" : "Continue"}
+              </button>
+            </form>
+          ) : challenge.enrolment_required ? (
+            <form onSubmit={onSubmitEnrolmentCode} className="space-y-5">
+              <div>
+                <div className="text-sm font-medium text-slate-900">
+                  Set up two-factor authentication
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  This account has never signed in before. Scan the QR code
+                  with an authenticator app, then enter the 6-digit code it
+                  shows to finish setting up and sign in.
+                </p>
+              </div>
+
+              {enrolment ? (
+                <>
+                  <div className="flex justify-center rounded-lg border border-slate-200 bg-white p-4">
+                    <img
+                      src={enrolment.qr_code_svg_data_uri}
+                      alt="Scan with your authenticator app"
+                      className="h-40 w-40"
+                    />
+                  </div>
+                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    Can't scan it? Enter this key manually:
+                    <div className="mt-1 break-all font-mono text-[11px] text-slate-700">
+                      {enrolment.secret}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                  Preparing your QR code…
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="enrol-code" className="block text-sm font-medium text-slate-700">
+                  Verification code
+                </label>
+                <input
+                  id="enrol-code"
+                  ref={codeRef}
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-center font-mono text-lg tracking-[0.4em] outline-none focus:border-slate-900"
+                  required
+                />
+              </div>
+
+              {error && (
+                <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-risk-critical">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={busy || code.length !== 6 || !enrolment}
+                className="w-full rounded-lg bg-shell px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {busy ? "Confirming…" : "Confirm and sign in"}
+              </button>
+              <button
+                type="button"
+                onClick={cancelChallenge}
+                className="w-full text-sm text-slate-500 hover:text-slate-800"
+              >
+                Start over
               </button>
             </form>
           ) : (
