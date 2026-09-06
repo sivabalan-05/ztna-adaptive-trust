@@ -65,6 +65,10 @@ export default function PoliciesPage() {
   }
 
   async function onDelete(policy: PolicyRow) {
+    const ok = window.confirm(
+      `Delete policy "${policy.name}"? This cannot be undone, and removing it immediately changes who can reach what — any access it was allowing or denying reverts to whatever the next-highest-priority policy decides.`,
+    );
+    if (!ok) return;
     setError("");
     try {
       await deletePolicy(policy.id);

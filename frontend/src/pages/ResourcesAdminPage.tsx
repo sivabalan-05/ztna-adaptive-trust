@@ -13,6 +13,19 @@ const EMPTY_FORM = {
   sensitivity: "INTERNAL", owner: "",
 };
 
+// Mirrors the server's allowlist exactly (see backend resource file guards).
+const ALLOWED_FILE_TYPES = [
+  "application/pdf", "text/plain", "text/markdown", "text/csv",
+  "application/json", "image/png", "image/jpeg", "image/webp",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+];
+const ACCEPT_ATTR =
+  ".pdf,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp,.docx,.xlsx,.pptx," +
+  ALLOWED_FILE_TYPES.join(",");
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
 /**
  * The catalogue, as an administrator sees it: what exists, what it protects,
  * and what file sits behind it. Analysts get the same view without controls.
@@ -52,6 +65,12 @@ export default function ResourcesAdminPage() {
 
   async function onUpload(slug: string, file: File) {
     setError("");
+    if (file.size > MAX_FILE_BYTES) {
+      setError(
+        `"${file.name}" is ${(file.size / (1024 * 1024)).toFixed(1)} MB, over the 25 MB limit. Choose a smaller file.`,
+      );
+      return;
+    }
     try {
       await uploadResourceFile(slug, file);
       load();
@@ -60,10 +79,14 @@ export default function ResourcesAdminPage() {
     }
   }
 
-  async function onDisable(slug: string) {
+  async function onDisable(resource: ResourceReachability) {
+    const ok = window.confirm(
+      `Disable "${resource.name}"? It stops being reachable and drops out of the default catalogue view, but it is not deleted — you can re-enable it here at any time.`,
+    );
+    if (!ok) return;
     setError("");
     try {
-      await disableResource(slug);
+      await disableResource(resource.slug);
       load();
     } catch (err) {
       setError(apiErrorMessage(err, "Could not disable the resource."));
@@ -236,6 +259,7 @@ export default function ResourcesAdminPage() {
                             {resource.has_file ? "Replace" : "Upload"}
                             <input
                               type="file"
+                              accept={ACCEPT_ATTR}
                               className="hidden"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
@@ -246,7 +270,7 @@ export default function ResourcesAdminPage() {
                           </label>
                           {resource.enabled ? (
                             <button
-                              onClick={() => onDisable(resource.slug)}
+                              onClick={() => onDisable(resource)}
                               className="rounded border border-slate-300 px-2 py-1 text-xs text-risk-critical hover:bg-red-50"
                             >
                               Disable
