@@ -85,7 +85,9 @@ a 429, and `X-Access-Gate` names which policy gate refused a 403.
 | `POST` | `/api/auth/logout` | End the current session |
 | `GET` | `/api/auth/me` | Current identity and session |
 | `POST` | `/api/auth/mfa/confirm` | Confirm TOTP enrolment with a code from the app |
+| `POST` | `/api/auth/mfa/confirm/setup` | First-login only — confirm the code and complete sign-in |
 | `POST` | `/api/auth/mfa/enrol` | Generate a TOTP secret and enrolment QR code |
+| `POST` | `/api/auth/mfa/enrol/setup` | First-login only — generate a TOTP secret before an access token exists |
 | `POST` | `/api/auth/mfa/verify` | Step 2 — verify the TOTP code and issue tokens |
 | `POST` | `/api/auth/refresh` | Rotate tokens |
 | `POST` | `/api/auth/register` | Create a user (administrators only) |
@@ -137,9 +139,14 @@ a 429, and `X-Access-Gate` names which policy gate refused a 403.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/resources` | The catalogue, annotated with what this session can currently reach |
+| `POST` | `/api/resources` | Create a resource (administrators only) |
 | `GET` | `/api/resources/access/history` | The caller's recent access attempts |
 | `GET` | `/api/resources/{slug}` | One resource |
+| `PATCH` | `/api/resources/{slug}` | Edit a resource |
+| `DELETE` | `/api/resources/{slug}` | Disable a resource |
 | `POST` | `/api/resources/{slug}/access` | Request access — the policy enforcement point |
+| `GET` | `/api/resources/{slug}/content` | View or download — enforced on every single request |
+| `POST` | `/api/resources/{slug}/file` | Attach or replace this resource's file |
 
 ### sessions
 
@@ -182,6 +189,7 @@ a 429, and `X-Access-Gate` names which policy gate refused a 403.
 | `sessions:read`, `sessions:revoke` | admin, security_analyst |
 | `alerts:read`, `alerts:write` | admin, security_analyst |
 | `audit:read`, `audit:verify` | admin, security_analyst |
+| `resources:read`, `resources:write` | admin, analyst (read only) |
 
 Administrators pass every check. Everyone else is checked against their role's
 list, and a user may always read their own session and devices.

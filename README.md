@@ -6,8 +6,8 @@ device, network, behavioural, location and temporal signals. An AI engine turns
 those signals into a **0–100 trust score**, and a policy engine turns the score
 into an action: **Allow / Allow-limited / Step-up MFA / Block / Revoke session.**
 
-> **Build status: complete — all 10 phases.**
-> 309 tests pass, all seven attack scenarios behave as specified against the
+> **Build status: complete — all 10 phases, plus a role-complete platform pass.**
+> 345 tests pass, all seven attack scenarios behave as specified against the
 > live API, and the audit chain verifies end to end. See
 > [Known boundaries](#known-boundaries) for what is deliberately not built.
 
@@ -175,6 +175,12 @@ always explain why a score ignored the arithmetic:
 | Alerts | 45 |
 | Behaviour profiles | 25, computed from normal history only |
 | Audit records | 2,074, hash-chained |
+
+Each of the twelve resources also gets a small attached file — text,
+Markdown, CSV or JSON, never PDF — so a fresh `--reset` yields a catalogue
+that can actually be opened rather than metadata pointing at nothing.
+`--reset` clears `storage/` alongside the tables, so the two never drift
+apart.
 
 Credentials printed at the end of the run:
 
@@ -396,6 +402,31 @@ commits before raising the 403.
 evaluated per request, so a new DENY takes effect on the next call with no
 restart — there is a test that asserts exactly that.
 
+### Resource content
+
+Resources carry real files. Bytes live on disk under
+`settings.resource_storage_dir` (`storage/resources/` by default — gitignored,
+nothing under `storage/` is committed), never in the database, and the stored
+filename is always a server-generated UUID so an upload's own filename can
+never influence a path.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/resources` | Create a resource (`resources:write`) |
+| `PATCH /api/resources/{slug}` | Edit a resource's metadata (`resources:write`) |
+| `POST /api/resources/{slug}/file` | Attach or replace a resource's file — 25 MB ceiling, content-type allowlist (`resources:write`) |
+| `DELETE /api/resources/{slug}` | Disable a resource; `access_requests` rows reference it, so this never deletes (`resources:write`) |
+| `GET /api/resources/{slug}/content` | View or download — any authenticated caller |
+
+The last one is the one that matters: it calls the same
+`AccessService.request_access()` that `POST /{slug}/access` uses, before it
+streams a single byte. Every view or download therefore re-scores the session,
+writes an `access_requests` row and appends to the hash-chained audit log —
+it does not sit beside the enforcement point, it *is* the enforcement point. A
+denial returns 403 with `X-Access-Gate` and `X-Trust-Score` headers and
+commits its evidence before raising, exactly like `POST /{slug}/access` does.
+There is no static mount over `storage/` and no other route to the bytes.
+
 ---
 
 ## Anomaly detection
@@ -527,8 +558,10 @@ undoing a security control in a security demo would teach the wrong lesson.
 
 ## The console
 
-Signing in as an administrator or security analyst opens the eight-page console;
-everyone else gets their own session view. Both are the same React app.
+Signing in as an administrator or security analyst opens the ten-page console
+below. `employee` and `contractor` never see it — they get a five-page portal
+of their own instead; see [The portal](#the-portal). Both are the same React
+app.
 
 | Page | What it does | Backed by |
 |---|---|---|
@@ -540,6 +573,23 @@ everyone else gets their own session view. Both are the same React app.
 | **Trust Score** | This session's factor-by-factor breakdown | `/api/trust/me` |
 | **Audit Logs** | Searchable chain, verify button, CSV export | `/api/audit` |
 | **Session Revocation** | Terminate any session with a reason written to the chain | `/api/sessions/{id}/revoke` |
+| **Resources** | Catalogue with create, edit, file upload and disable; read-only for analysts | `/api/resources`, `/api/resources/{slug}/file` |
+| **Policies** | List, create, edit and enable/disable a policy; read-only for analysts | `/api/policies` |
+
+### One console, gated per permission
+
+A `usePermissions()` hook reads `me.permissions` and `me.is_admin` and gates
+every write control on the exact permission the server enforces — the role
+dropdown and account unlock need `users:write`, device approve/revoke need
+`devices:approve`/`devices:revoke`, a policy edit needs `policies:write`, a
+resource edit or upload needs `resources:write`. A `security_analyst` holds
+`sessions:revoke`, `alerts:write` and `audit:verify` but none of those, so that
+role sees the same ten pages with those controls simply absent — no role
+dropdown, no unlock button, no device approve/revoke — and Resources and
+Policies rendered read-only, while session revocation still works because that
+permission is theirs. Before this hook existed, every control rendered for
+every role and the ones a `security_analyst` could not use failed silently
+with a 403 on click.
 
 ### Chart decisions, and one that had to change
 
@@ -574,6 +624,34 @@ The rest follows from the same principle:
 Every page reads live events from one `LiveProvider` context. Opening a socket
 per page would mean three connections and three tickets while an operator moves
 between Live Monitoring, Alerts and Overview.
+
+---
+
+## The portal
+
+`employee` and `contractor` land in a five-page `PortalShell` instead of the
+console — the same navigation pattern, a complete and different set of
+screens, nothing disabled.
+
+| Page | What it does | Backed by |
+|---|---|---|
+| **My Access** | The catalogue grouped by sensitivity; each resource shows its live reachability, and opening one shows the decision — granted or denied, the deciding gate, the matched policy, score against requirement — with the file previewed or downloaded when access is granted | `/api/resources`, `/{slug}/access`, `/{slug}/content` |
+| **My Session** | The trust panel, session fields and device table carried over from the old single-screen view | `/api/auth/me`, `/api/trust/me` |
+| **My Devices** | This account's registered devices | `/api/devices/me` |
+| **My Activity** | Recent access attempts and recent sessions | `/api/resources/access/history`, `/api/sessions/me` |
+| **Trust & Policy** | The live weights, bands and floors from `/api/trust/config`, applied to this session, naming what would raise it into the next band | `/api/trust/config`, `/api/trust/me` |
+
+Preview needs no rendering dependency: plain text, Markdown, CSV and JSON are
+shown as monospaced source (Markdown as its own source, not rendered HTML);
+PDFs and images render from the blob's own object URL in a native `<object>`
+or `<img>`; anything else offers download only. The frontend never gets a
+direct file URL — content always arrives as an authenticated blob fetch,
+because a plain `<a href>` cannot carry the bearer token and a token in a
+query string would land in proxy logs and browser history.
+
+This replaced a single session-info screen whose sidebar was eight `<div>`s
+carrying `title="Available in Phase 9"` — not links, just disabled labels.
+Every entry above is a real, working page for the role that reaches it.
 
 ---
 
@@ -823,13 +901,18 @@ ztna-project/
 │       ├── middleware/    context collector, gateway rate limit
 │       └── workers/       continuous_verification, retrain, runner
 ├── data/                  optional GeoLite2 / Tor / blocklist drop-ins
+├── storage/               uploaded resource files (gitignored, not committed)
 ├── frontend/              React 18 + Vite + Tailwind 4 + Recharts
 │   └── src/
-│       ├── pages/         the 8 console pages + login + own-session view
-│       ├── components/    layout shell, charts (validated palette), TrustPanel
+│       ├── pages/         the 10 console pages + login; pages/portal/ for
+│       │                  the 5-page employee/contractor portal
+│       ├── components/    AppShell (console) + PortalShell, charts
+│       │                  (validated palette), TrustPanel
+│       ├── auth/          AuthContext, usePermissions
 │       ├── hooks/         useLiveEvents (WebSocket + ticket handshake)
 │       ├── live/          LiveProvider — one socket for the whole app
-│       └── api/           typed client for every endpoint
+│       └── api/           http.ts, resources.ts, policies.ts, and client.ts
+│                          re-exporting all three as a barrel
 ├── scripts/
 │   ├── seed.py            90-day corpus generator
 │   ├── seed_data.py       static reference data

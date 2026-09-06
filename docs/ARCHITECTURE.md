@@ -59,6 +59,28 @@ one is a refusal:
 3. **Trust** — the live score must meet the resource's floor and every condition
    the matched policy attaches: MFA, known device, no VPN, country, time window.
 
+## Content delivery is enforcement, not storage
+
+`GET /api/resources/{slug}/content` streams a resource's file, but only as the
+outcome of a live decision. It calls the same `AccessService.request_access()`
+that `POST /{slug}/access` uses, before a single byte leaves the server, so a
+view or a download is re-scored against *this* request's context, cleared
+through the same three gates above, recorded to `access_requests` with its
+feature vector, and appended to the hash-chained audit log. A denial commits
+that evidence before raising its 403 — exactly as the enforcement point above
+does — and carries the deciding gate in `X-Access-Gate` and the score in
+`X-Trust-Score`.
+
+Bytes live on disk under `settings.resource_storage_dir`
+(`storage/resources/` by default, gitignored), addressed only by a
+server-generated UUID the client never sees; the client's own filename is kept
+solely as a display label. **No `StaticFiles` mount, and no other route,
+exists over the storage root** — the enforcement point above is the only way
+to reach a stored file. That is what makes revoking a device or driving a
+session's trust down mid-session meaningful from the outside: the very next
+open of the same file is judged again from scratch, not served from a cache or
+a path that bypassed the gates.
+
 ## Layers
 
 | Layer | Module | Responsibility |
@@ -69,7 +91,7 @@ one is a refusal:
 | Context | `app/core/context.py`, `app/external/` | GeoIP, IP reputation, VPN/Tor, notifications |
 | AI | `app/ai/` | Six factors, overrides, classification, decision, XAI, anomaly, profiling |
 | Policy | `app/services/policy_engine.py` | The three gates |
-| Enforcement | `app/services/access_service.py` | Re-score, decide, record, enforce, audit |
+| Enforcement | `app/services/access_service.py`, `app/api/resources.py` | Re-score, decide, record, enforce, audit — shared by resource access and resource content |
 | Audit | `app/services/audit_service.py` | Hash-chained append and verification |
 | Live | `app/services/events.py`, `app/api/ws.py` | Event bus, WebSocket, ticket handshake |
 | Workers | `app/workers/` | 30-second verification sweep, nightly retrain |
@@ -92,6 +114,12 @@ Twelve tables. The ones that carry the design:
 - **`behavior_profiles`** — the rolling baseline. Login hours are stored as a
   circular mean, so a user who signs in at 23:00 and 01:00 gets a baseline near
   midnight rather than near noon.
+- **`resources`** — catalogue entries. Migration `0002_resource_content` added
+  six nullable columns (`file_name`, `file_path`, `content_type`, `file_size`,
+  `uploaded_at`, `uploaded_by_id`) so a resource can carry a real file without
+  breaking the rows that existed before the migration. The bytes themselves
+  never sit in this table — `file_path` only names a UUID under the storage
+  root.
 
 ## Where the verification sweep runs
 

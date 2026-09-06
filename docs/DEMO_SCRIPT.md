@@ -1,6 +1,6 @@
 # Demo script
 
-Twelve minutes, in the order that builds the argument. Everything here is
+Fourteen minutes, in the order that builds the argument. Everything here is
 reproducible from a clean checkout.
 
 ## Before the room
@@ -19,6 +19,13 @@ Open <http://localhost:5173> and sign in as `admin` / `Admin@Ztna2026!` with a
 code from terminal 3. Leave the **Live Monitoring** page projected.
 
 Everything runs offline. No internet is required at any point.
+
+**If the room asks to see a CONFIDENTIAL or RESTRICTED download succeed**,
+approve the demonstrating account's device first, from **Users & Devices**.
+A brand-new device carries a real penalty, and that penalty alone can put
+CONFIDENTIAL (floor 75) and RESTRICTED (floor 90) out of reach — an approved
+device removes it. INTERNAL resources such as `hr-portal` (floor 60) do not
+need this.
 
 ---
 
@@ -91,7 +98,37 @@ Switch to the private window without touching it:
 
 ---
 
-## 5. The chain of trust (2 min)
+## 5. Continuous verification, live (2 min)
+
+This is the project's central claim, shown live rather than asserted: trust is
+recomputed on the *next request*, not read off the session row from sign-in.
+
+Open a second private window and sign in as `arjun.krishnan` / `Ztna@Demo2026`
+(employee). On **My Access**, open **hr-portal** (INTERNAL, floor 60) — it
+downloads and previews normally; INTERNAL's floor is low enough that even a
+brand-new, unapproved device clears it.
+
+Back in the admin window: **Resources** → `hr-portal` → **Edit** → raise
+**Minimum trust score** to **100** → **Save**. No restart, no re-login for
+anyone.
+
+In the employee's window, press **Open** on `hr-portal` again — the file that
+downloaded a moment ago is now refused:
+
+> **Refused — gate `trust`.** The session's score does not meet this
+> resource's floor.
+
+> "Nothing about the employee's session changed. The floor moved, and the very
+> next request was judged against the new one — because the score is
+> recomputed per request, never cached from sign-in. That is continuous
+> verification, not a login check."
+
+Restore the floor afterwards: **Resources** → `hr-portal` → **Edit** →
+**Minimum trust score** back to **60** → **Save**.
+
+---
+
+## 6. The chain of trust (2 min)
 
 Open **Audit Logs** → **Verify chain**.
 
