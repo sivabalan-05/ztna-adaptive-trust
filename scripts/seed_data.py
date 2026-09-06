@@ -227,6 +227,9 @@ class ResourceSpec(TypedDict):
     category: str
     sensitivity: str
     owner: str
+    file_name: str
+    content_type: str
+    body: str
 
 
 RESOURCES: list[ResourceSpec] = [
@@ -234,60 +237,178 @@ RESOURCES: list[ResourceSpec] = [
         "slug": "public-docs", "name": "Public Documentation Portal",
         "description": "Externally published product documentation and policies.",
         "category": "website", "sensitivity": "PUBLIC", "owner": "Marketing",
+        "file_name": "product-documentation.md",
+        "content_type": "text/markdown",
+        "body": (
+            "# Product Documentation\n\n"
+            "Publicly published guides, release notes and policy summaries.\n\n"
+            "## Contents\n\n"
+            "- Getting started\n- Release notes\n- Acceptable use policy\n"
+        ),
     },
     {
         "slug": "company-intranet", "name": "Company Intranet",
         "description": "Announcements, holiday calendar and internal directory.",
         "category": "website", "sensitivity": "PUBLIC", "owner": "Human Resources",
+        "file_name": "announcements.md",
+        "content_type": "text/markdown",
+        "body": (
+            "# Company Intranet\n\n"
+            "## This week\n\n"
+            "- Quarterly all-hands on Friday\n"
+            "- Holiday calendar published for the next quarter\n"
+        ),
     },
     {
         "slug": "hr-portal", "name": "HR Portal",
         "description": "Leave management, timesheets and appraisal records.",
         "category": "application", "sensitivity": "INTERNAL", "owner": "Human Resources",
+        "file_name": "leave-policy.md",
+        "content_type": "text/markdown",
+        "body": (
+            "# Leave Policy\n\n"
+            "## Entitlement\n\n"
+            "- 18 days of paid annual leave, accrued monthly\n"
+            "- 12 days of casual/sick leave per calendar year\n"
+            "- Unused annual leave carries over up to 10 days\n\n"
+            "## Requesting leave\n\n"
+            "Submit requests through the HR Portal at least 3 working days "
+            "in advance; your manager approves or rejects within 2 days.\n"
+        ),
     },
     {
         "slug": "ticketing-system", "name": "Support Ticketing System",
         "description": "Customer support queue and escalation workflow.",
         "category": "application", "sensitivity": "INTERNAL", "owner": "Customer Support",
+        "file_name": "open-tickets.csv",
+        "content_type": "text/csv",
+        "body": (
+            "ticket_id,subject,priority,status,assignee\n"
+            "TCK-1001,Login page returns 500,High,Open,Divya\n"
+            "TCK-1002,Export button missing on reports,Low,Open,Karthik\n"
+            "TCK-1003,Password reset email delayed,Medium,In Progress,Ramya\n"
+            "TCK-1004,Mobile app crashes on upload,High,Open,Sandeep\n"
+        ),
     },
     {
         "slug": "wiki-engineering", "name": "Engineering Wiki",
         "description": "Design documents, runbooks and architecture decisions.",
         "category": "application", "sensitivity": "INTERNAL", "owner": "Engineering",
+        "file_name": "runbook-index.md",
+        "content_type": "text/markdown",
+        "body": (
+            "# Runbook Index\n\n"
+            "## On-call runbooks\n\n"
+            "- Database failover procedure\n"
+            "- API gateway rate-limit incident response\n"
+            "- Cache eviction storm recovery\n\n"
+            "## Architecture decisions\n\n"
+            "- ADR-014: Move session storage to Redis\n"
+            "- ADR-021: Adopt trust-score based access policies\n"
+        ),
     },
     {
         "slug": "source-repo", "name": "Source Code Repository",
         "description": "Git server hosting all first-party application source.",
         "category": "repository", "sensitivity": "CONFIDENTIAL", "owner": "Engineering",
+        "file_name": "repository-layout.md",
+        "content_type": "text/markdown",
+        "body": (
+            "# Repository Layout\n\n"
+            "```\n"
+            "backend/   FastAPI service, ORM models, tests\n"
+            "frontend/  React + Vite single-page application\n"
+            "scripts/   Database seeding and maintenance scripts\n"
+            "storage/   Uploaded resource files (gitignored)\n"
+            "```\n\n"
+            "Trunk-based development off `main`; feature branches are "
+            "squash-merged after review.\n"
+        ),
     },
     {
         "slug": "build-pipeline", "name": "CI/CD Build Pipeline",
         "description": "Build agents, deployment jobs and signing workflow.",
         "category": "service", "sensitivity": "CONFIDENTIAL", "owner": "Engineering",
+        "file_name": "pipeline.json",
+        "content_type": "application/json",
+        "body": (
+            "{\n"
+            '  "pipeline": "backend-deploy",\n'
+            '  "stages": ["lint", "test", "build", "sign", "deploy"],\n'
+            '  "runners": ["linux-x64-1", "linux-x64-2"],\n'
+            '  "signing_key_ref": "vault://ci/signing-key",\n'
+            '  "deploy_targets": ["staging", "production"]\n'
+            "}\n"
+        ),
     },
     {
         "slug": "crm-database", "name": "CRM Database",
         "description": "Sales pipeline, contracts and account owner records.",
         "category": "database", "sensitivity": "CONFIDENTIAL", "owner": "Sales",
+        "file_name": "accounts.csv",
+        "content_type": "text/csv",
+        "body": (
+            "account_id,company,stage,owner,arr_usd\n"
+            "ACC-2001,Northwind Traders,Negotiation,Priya,84000\n"
+            "ACC-2002,Contoso Logistics,Closed Won,Arjun,152000\n"
+            "ACC-2003,Fabrikam Retail,Prospecting,Meera,0\n"
+            "ACC-2004,Globex Manufacturing,Closed Won,Priya,231000\n"
+        ),
     },
     {
         "slug": "finance-reports", "name": "Finance Reporting Warehouse",
         "description": "Quarterly ledgers, forecasts and audit worksheets.",
         "category": "database", "sensitivity": "CONFIDENTIAL", "owner": "Finance",
+        "file_name": "ledger-extract.csv",
+        "content_type": "text/csv",
+        "body": (
+            "period,account,description,debit_usd,credit_usd\n"
+            "Q1-2026,4000,Product revenue,0,410000\n"
+            "Q1-2026,5100,Cloud infrastructure,62000,0\n"
+            "Q1-2026,5200,Salaries and benefits,187000,0\n"
+            "Q1-2026,5300,Office lease,15000,0\n"
+        ),
     },
     {
         "slug": "payroll-db", "name": "Payroll Database",
         "description": "Salary structure, bank details and tax declarations.",
         "category": "database", "sensitivity": "RESTRICTED", "owner": "Finance",
+        "file_name": "salary-register.csv",
+        "content_type": "text/csv",
+        "body": (
+            "employee_id,full_name,department,monthly_salary_usd,tax_regime\n"
+            "EMP-3001,Test Employee One,Engineering,6200,New\n"
+            "EMP-3002,Test Employee Two,Finance,5400,Old\n"
+            "EMP-3003,Test Employee Three,Sales,4800,New\n"
+            "EMP-3004,Test Employee Four,Human Resources,5100,New\n"
+        ),
     },
     {
         "slug": "customer-pii-store", "name": "Customer PII Store",
         "description": "Identity documents and KYC records for customer accounts.",
         "category": "database", "sensitivity": "RESTRICTED", "owner": "Information Security",
+        "file_name": "kyc-records.csv",
+        "content_type": "text/csv",
+        "body": (
+            "customer_id,full_name,id_type,id_number,country\n"
+            "CUST-9001,Fictional Customer A,Passport,X0000001,Testland\n"
+            "CUST-9002,Fictional Customer B,National ID,Y0000002,Testland\n"
+            "CUST-9003,Fictional Customer C,Passport,X0000003,Sampleland\n"
+        ),
     },
     {
         "slug": "prod-secrets-vault", "name": "Production Secrets Vault",
         "description": "Production credentials, signing keys and API tokens.",
         "category": "service", "sensitivity": "RESTRICTED", "owner": "Information Security",
+        "file_name": "secrets-index.md",
+        "content_type": "text/markdown",
+        "body": (
+            "# Secrets Index\n\n"
+            "Names only — values are never stored outside the vault.\n\n"
+            "- `db/production/password`\n"
+            "- `ci/signing-key`\n"
+            "- `payments/api-token`\n"
+            "- `smtp/relay-credential`\n"
+        ),
     },
 ]

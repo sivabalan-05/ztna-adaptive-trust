@@ -49,6 +49,7 @@ import pyotp  # noqa: E402
 from sqlalchemy import delete, insert, select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
+from app.core import storage  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.database import SessionLocal  # noqa: E402
 from app.core.security import estimate_password_strength, hash_password  # noqa: E402
@@ -56,6 +57,7 @@ from app.models import (  # noqa: E402
     AccessRequest, Alert, AuditLog, BehaviorProfile, Device, Policy, Resource,
     Role, SystemLog, TrustScore, User, UserSession,
 )
+from app.models.base import utcnow  # noqa: E402
 from app.models.enums import (  # noqa: E402
     AccountStatus, AlertSeverity, AlertStatus, DeviceStatus, LogLevel,
     PolicyEffect, SENSITIVITY_MIN_TRUST, ScoreTrigger, Sensitivity,
@@ -190,6 +192,9 @@ def purge(db: Session) -> None:
     for model in TABLES_IN_DELETE_ORDER:
         db.execute(delete(model))
     db.commit()
+    # Files and rows must not drift apart: a reset that left orphaned files
+    # behind would grow the storage directory on every run.
+    storage.clear()
 
 
 def create_roles(db: Session) -> dict[str, dict[str, Any]]:
@@ -211,6 +216,9 @@ def create_resources(db: Session) -> list[dict[str, Any]]:
     rows = []
     for spec in RESOURCES:
         sens = Sensitivity(spec["sensitivity"])
+        stored_name = storage.save(
+            spec["body"].encode("utf-8"), spec["content_type"]
+        )
         rows.append(
             {
                 "id": uuid.uuid4(), "slug": spec["slug"], "name": spec["name"],
@@ -218,6 +226,12 @@ def create_resources(db: Session) -> list[dict[str, Any]]:
                 "sensitivity": sens,
                 "min_trust_score": SENSITIVITY_MIN_TRUST[sens],
                 "owner": spec["owner"], "enabled": True,
+                "file_name": spec["file_name"],
+                "file_path": stored_name,
+                "content_type": spec["content_type"],
+                "file_size": len(spec["body"].encode("utf-8")),
+                "uploaded_at": utcnow(),
+                "uploaded_by_id": None,
             }
         )
     db.execute(insert(Resource), rows)
