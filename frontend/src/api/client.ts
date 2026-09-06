@@ -106,6 +106,25 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Reads the `detail` out of a failed blob request. A denial's reason arrives
+ * as a Blob rather than parsed JSON, so it needs decoding before display.
+ */
+export async function blobErrorMessage(
+  error: unknown,
+  fallback: string,
+): Promise<string> {
+  if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await error.response.data.text());
+      if (parsed?.detail) return String(parsed.detail);
+    } catch {
+      /* not JSON; fall through to the generic message */
+    }
+  }
+  return apiErrorMessage(error, fallback);
+}
+
 // --- types ------------------------------------------------------------------
 
 export interface Health {
@@ -240,6 +259,94 @@ export interface TrustConfig {
   overrides: { name: string; clamps_to: number; reason: string }[];
   anomaly_model_available: boolean;
   continuous_verification_interval_seconds: number;
+}
+
+export interface ResourceSummary {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  category: string;
+  sensitivity: string;
+  min_trust_score: number;
+  owner: string;
+  enabled: boolean;
+  has_file: boolean;
+  file_name: string | null;
+  content_type: string | null;
+  file_size: number | null;
+}
+
+export interface ResourceReachability extends ResourceSummary {
+  reachable: boolean;
+  action: string;
+  reason: string;
+  gate: string;
+  required_score: number;
+  matched_policy: string;
+}
+
+export interface PolicyEvaluation {
+  name: string;
+  effect: string;
+  priority: number;
+  matched: boolean;
+  decisive: boolean;
+  unmet_conditions: string[];
+}
+
+export interface AccessDecision {
+  resource: string;
+  sensitivity: string;
+  granted: boolean;
+  action: string;
+  reason: string;
+  gate: string;
+  matched_policy: string;
+  required_score: number;
+  trust_score: number;
+  risk_level: string;
+  latency_ms: number;
+  policies_evaluated: PolicyEvaluation[];
+}
+
+export interface AccessHistoryRow {
+  id: string;
+  requested_at: string;
+  resource: string | null;
+  path: string;
+  score_at_request: number;
+  risk_level: string;
+  decision: string;
+  granted: boolean;
+  reason: string;
+  matched_policy: string;
+  latency_ms: number;
+}
+
+export interface PolicyRow {
+  id: string;
+  name: string;
+  description: string;
+  role: string | null;
+  resource: string | null;
+  sensitivity: string | null;
+  min_trust_score: number;
+  require_mfa: boolean;
+  require_known_device: boolean;
+  deny_vpn: boolean;
+  allowed_countries: string[];
+  time_window: Record<string, unknown>;
+  effect: string;
+  priority: number;
+  enabled: boolean;
+}
+
+/** A fetched file plus the decision headers that allowed it through. */
+export interface ResourceContent {
+  blob: Blob;
+  contentType: string;
+  trustScore: number | null;
 }
 
 export interface Me {
@@ -539,3 +646,69 @@ export const getSessionTrustHistory = (sessionId: string) =>
 export const wsBaseUrl =
   import.meta.env.VITE_WS_BASE_URL ??
   baseURL.replace(/^http/, "ws");
+
+// --- resources --------------------------------------------------------------
+
+export const getResources = (includeDisabled = false) =>
+  api
+    .get<ResourceReachability[]>(
+      `/api/resources${includeDisabled ? "?include_disabled=true" : ""}`,
+    )
+    .then((r) => r.data);
+
+export const requestAccess = (slug: string) =>
+  api.post<AccessDecision>(`/api/resources/${slug}/access`).then((r) => r.data);
+
+/**
+ * Fetches a resource's file. The Authorization header rules out a plain
+ * anchor download, so the bytes come back as a blob and the caller decides
+ * whether to preview or save them.
+ */
+export const getResourceContent = (slug: string): Promise<ResourceContent> =>
+  api
+    .get(`/api/resources/${slug}/content`, { responseType: "blob" })
+    .then((r) => ({
+      blob: r.data as Blob,
+      contentType: String(r.headers["content-type"] ?? "application/octet-stream"),
+      trustScore: r.headers["x-trust-score"]
+        ? Number(r.headers["x-trust-score"])
+        : null,
+    }));
+
+export const getAccessHistory = (limit = 50) =>
+  api
+    .get<AccessHistoryRow[]>(`/api/resources/access/history?limit=${limit}`)
+    .then((r) => r.data);
+
+export const getMySessions = () =>
+  api.get<LiveSession[]>("/api/sessions/me").then((r) => r.data);
+
+export const createResource = (body: Record<string, unknown>) =>
+  api.post<ResourceSummary>("/api/resources", body).then((r) => r.data);
+
+export const updateResource = (slug: string, body: Record<string, unknown>) =>
+  api.patch<ResourceSummary>(`/api/resources/${slug}`, body).then((r) => r.data);
+
+export const disableResource = (slug: string) =>
+  api.delete(`/api/resources/${slug}`);
+
+export const uploadResourceFile = (slug: string, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return api
+    .post<ResourceSummary>(`/api/resources/${slug}/file`, form)
+    .then((r) => r.data);
+};
+
+// --- policies ---------------------------------------------------------------
+
+export const getPolicies = () =>
+  api.get<PolicyRow[]>("/api/policies").then((r) => r.data);
+
+export const createPolicy = (body: Record<string, unknown>) =>
+  api.post<PolicyRow>("/api/policies", body).then((r) => r.data);
+
+export const updatePolicy = (id: string, body: Record<string, unknown>) =>
+  api.patch<PolicyRow>(`/api/policies/${id}`, body).then((r) => r.data);
+
+export const deletePolicy = (id: string) => api.delete(`/api/policies/${id}`);
