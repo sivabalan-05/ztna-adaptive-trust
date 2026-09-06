@@ -183,9 +183,11 @@ a 429, and `X-Access-Gate` names which policy gate refused a 403.
 
 | Permission | Held by |
 |---|---|
-| `users:read`, `users:write` | admin |
+| `users:read` | admin, security_analyst |
+| `users:write` | admin |
 | `devices:read`, `devices:approve`, `devices:revoke` | admin, analyst (read only) |
-| `policies:read`, `policies:write` | admin |
+| `policies:read` | admin, security_analyst |
+| `policies:write` | admin |
 | `sessions:read`, `sessions:revoke` | admin, security_analyst |
 | `alerts:read`, `alerts:write` | admin, security_analyst |
 | `audit:read`, `audit:verify` | admin, security_analyst |
