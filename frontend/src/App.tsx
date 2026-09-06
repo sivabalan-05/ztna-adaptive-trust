@@ -2,12 +2,17 @@ import { useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppShell from "./components/layout/AppShell";
+import PortalShell from "./components/layout/PortalShell";
 import { LiveProvider } from "./live/LiveContext";
 import AlertsPage from "./pages/AlertsPage";
 import AuditPage from "./pages/AuditPage";
 import LiveMonitoringPage from "./pages/LiveMonitoringPage";
 import LoginPage from "./pages/LoginPage";
 import OverviewPage from "./pages/OverviewPage";
+import MyAccessPage from "./pages/portal/MyAccessPage";
+import MyActivityPage from "./pages/portal/MyActivityPage";
+import MyDevicesPage from "./pages/portal/MyDevicesPage";
+import MyTrustPage from "./pages/portal/MyTrustPage";
 import RevocationPage from "./pages/RevocationPage";
 import RiskScoresPage from "./pages/RiskScoresPage";
 import SessionPage from "./pages/SessionPage";
@@ -88,7 +93,16 @@ function Gate() {
           </Route>
         </Routes>
       ) : (
-        <SessionPage />
+        <Routes>
+          <Route element={<PortalShell />}>
+            <Route index element={<MyAccessPage />} />
+            <Route path="session" element={<SessionPage />} />
+            <Route path="devices" element={<MyDevicesPage />} />
+            <Route path="activity" element={<MyActivityPage />} />
+            <Route path="trust" element={<MyTrustPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
       )}
     </LiveProvider>
   );
