@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pathlib import Path
+
+from fastapi import (
+    APIRouter, Depends, File, HTTPException, Query, Response, UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import profiling
+from app.core import storage
 from app.core.context import ContextBundle
 from app.core.database import get_db
 from app.core.dependencies import (
     Principal, get_context_bundle, get_principal, require_permission,
 )
 from app.models.access_request import AccessRequest
+from app.models.base import utcnow
 from app.models.enums import ScoreTrigger, Sensitivity
 from app.models.resource import Resource
 from app.schemas.access import (
@@ -339,3 +346,51 @@ def my_access_history(
         )
         for r in rows
     ]
+
+
+@router.post(
+    "/{slug}/file",
+    response_model=ResourceOut,
+    summary="Attach or replace this resource's file",
+)
+async def upload_resource_file(
+    slug: str,
+    file: UploadFile = File(...),
+    principal: Principal = Depends(require_permission("resources:write")),
+    db: Session = Depends(get_db),
+    bundle: ContextBundle = Depends(get_context_bundle),
+) -> ResourceOut:
+    resource = db.scalar(select(Resource).where(Resource.slug == slug))
+    if resource is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found.")
+
+    data = await file.read()
+    try:
+        stored_name = storage.save(data, file.content_type or "")
+    except storage.StorageError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, exc.message
+        ) from exc
+
+    previous = resource.file_path
+    resource.file_name = Path(file.filename or "file").name
+    resource.file_path = stored_name
+    resource.content_type = file.content_type
+    resource.file_size = len(data)
+    resource.uploaded_at = utcnow()
+    resource.uploaded_by_id = principal.user.id
+    db.flush()
+
+    # Only once the row points at the new file is the old one removed, so a
+    # failure above never leaves the row pointing at nothing.
+    if previous and previous != stored_name:
+        storage.delete(previous)
+
+    AuditService.record(
+        db, action="RESOURCE_FILE_UPLOADED", actor_id=principal.user.id,
+        actor_label=principal.user.username, resource_type="resource",
+        resource_id=str(resource.id), ip_address=bundle.ip_address,
+        payload={"slug": resource.slug, "file_name": resource.file_name,
+                 "content_type": resource.content_type, "bytes": resource.file_size},
+    )
+    return _to_out(resource)
