@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import profiling
 from app.core.context import ContextBundle
 from app.core.database import get_db
-from app.core.dependencies import Principal, get_context_bundle, get_principal
+from app.core.dependencies import (
+    Principal, get_context_bundle, get_principal, require_permission,
+)
 from app.models.access_request import AccessRequest
 from app.models.enums import ScoreTrigger, Sensitivity
 from app.models.resource import Resource
 from app.schemas.access import (
-    AccessDecisionOut, AccessRequestOut, ResourceOut, ResourceReachability,
+    AccessDecisionOut, AccessRequestOut, ResourceCreate, ResourceOut,
+    ResourceReachability, ResourceUpdate,
 )
 from app.services.access_service import AccessService
+from app.services.audit_service import AuditService
 from app.services.policy_engine import PolicyEngine
 from app.services.trust_service import TrustService
 
@@ -33,6 +37,10 @@ def catalogue(
     bundle: ContextBundle = Depends(get_context_bundle),
     db: Session = Depends(get_db),
     sensitivity: Sensitivity | None = Query(default=None),
+    include_disabled: bool = Query(
+        default=False,
+        description="Administrators only: also list disabled resources",
+    ),
 ) -> list[ResourceReachability]:
     """Evaluate every resource against the caller's live trust score.
 
@@ -53,6 +61,10 @@ def catalogue(
     )
     device_known = signals.is_known_device and signals.device_approved
 
+    # A caller without resources:write must never see disabled resources,
+    # whatever they pass — the flag alone is never trusted.
+    show_disabled = include_disabled and principal.has_permission("resources:write")
+
     rows: list[ResourceReachability] = []
     for resource, decision in PolicyEngine.reachable(
         db,
@@ -64,6 +76,8 @@ def catalogue(
         device_known=device_known,
     ):
         if sensitivity is not None and resource.sensitivity is not sensitivity:
+            continue
+        if not resource.enabled and not show_disabled:
             continue
         rows.append(
             ResourceReachability(
@@ -97,6 +111,139 @@ def get_resource(
     if resource is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found.")
     return resource
+
+
+def _to_out(resource: Resource) -> ResourceOut:
+    return ResourceOut(
+        id=resource.id,
+        slug=resource.slug,
+        name=resource.name,
+        description=resource.description,
+        category=resource.category,
+        sensitivity=resource.sensitivity.value,
+        min_trust_score=resource.min_trust_score,
+        owner=resource.owner,
+        enabled=resource.enabled,
+        has_file=resource.has_file,
+        file_name=resource.file_name,
+        content_type=resource.content_type,
+        file_size=resource.file_size,
+    )
+
+
+@router.post(
+    "",
+    response_model=ResourceOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a resource (administrators only)",
+)
+def create_resource(
+    payload: ResourceCreate,
+    principal: Principal = Depends(require_permission("resources:write")),
+    db: Session = Depends(get_db),
+    bundle: ContextBundle = Depends(get_context_bundle),
+) -> ResourceOut:
+    clash = db.scalar(select(Resource).where(Resource.slug == payload.slug))
+    if clash is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"Slug '{payload.slug}' is already in use."
+        )
+
+    sensitivity = Sensitivity(payload.sensitivity)
+    resource = Resource(
+        slug=payload.slug,
+        name=payload.name,
+        description=payload.description,
+        category=payload.category,
+        sensitivity=sensitivity,
+        min_trust_score=(
+            payload.min_trust_score
+            if payload.min_trust_score is not None
+            else Resource.default_min_trust(sensitivity)
+        ),
+        owner=payload.owner,
+    )
+    db.add(resource)
+    db.flush()
+
+    AuditService.record(
+        db, action="RESOURCE_CREATED", actor_id=principal.user.id,
+        actor_label=principal.user.username, resource_type="resource",
+        resource_id=str(resource.id), ip_address=bundle.ip_address,
+        payload={"slug": resource.slug, "sensitivity": sensitivity.value,
+                 "min_trust_score": resource.min_trust_score},
+    )
+    return _to_out(resource)
+
+
+@router.patch(
+    "/{slug}", response_model=ResourceOut, summary="Edit a resource"
+)
+def update_resource(
+    slug: str,
+    payload: ResourceUpdate,
+    principal: Principal = Depends(require_permission("resources:write")),
+    db: Session = Depends(get_db),
+    bundle: ContextBundle = Depends(get_context_bundle),
+) -> ResourceOut:
+    resource = db.scalar(select(Resource).where(Resource.slug == slug))
+    if resource is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found.")
+
+    changes: dict[str, object] = {}
+    for field in ("name", "description", "category", "owner",
+                  "min_trust_score", "enabled"):
+        value = getattr(payload, field)
+        if value is not None and value != getattr(resource, field):
+            changes[field] = {"from": getattr(resource, field), "to": value}
+            setattr(resource, field, value)
+
+    if payload.sensitivity is not None:
+        sensitivity = Sensitivity(payload.sensitivity)
+        if sensitivity is not resource.sensitivity:
+            changes["sensitivity"] = {
+                "from": resource.sensitivity.value, "to": sensitivity.value
+            }
+            resource.sensitivity = sensitivity
+
+    if not changes:
+        raise HTTPException(422, "No changes supplied.")
+
+    db.flush()
+    AuditService.record(
+        db, action="RESOURCE_UPDATED", actor_id=principal.user.id,
+        actor_label=principal.user.username, resource_type="resource",
+        resource_id=str(resource.id), ip_address=bundle.ip_address,
+        payload={"slug": resource.slug, "changes": changes},
+    )
+    return _to_out(resource)
+
+
+@router.delete(
+    "/{slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Disable a resource",
+)
+def disable_resource(
+    slug: str,
+    principal: Principal = Depends(require_permission("resources:write")),
+    db: Session = Depends(get_db),
+    bundle: ContextBundle = Depends(get_context_bundle),
+) -> Response:
+    """Disables rather than deletes: access history references this row, and
+    the audit trail has to stay whole."""
+    resource = db.scalar(select(Resource).where(Resource.slug == slug))
+    if resource is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found.")
+
+    resource.enabled = False
+    AuditService.record(
+        db, action="RESOURCE_DISABLED", actor_id=principal.user.id,
+        actor_label=principal.user.username, resource_type="resource",
+        resource_id=str(resource.id), ip_address=bundle.ip_address,
+        payload={"slug": resource.slug},
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

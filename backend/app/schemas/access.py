@@ -19,6 +19,10 @@ class ResourceOut(BaseModel):
     min_trust_score: int
     owner: str
     enabled: bool
+    has_file: bool = False
+    file_name: str | None = None
+    content_type: str | None = None
+    file_size: int | None = None
 
 
 class ResourceReachability(ResourceOut):
@@ -32,6 +36,32 @@ class ResourceReachability(ResourceOut):
     )
     required_score: int
     matched_policy: str
+
+
+class ResourceCreate(BaseModel):
+    """A new catalogue entry. The file, if any, is attached separately."""
+
+    slug: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9-]+$")
+    name: str = Field(min_length=2, max_length=128)
+    description: str = ""
+    category: str = Field(default="application", max_length=64)
+    sensitivity: str = Field(default="INTERNAL",
+                             pattern="^(PUBLIC|INTERNAL|CONFIDENTIAL|RESTRICTED)$")
+    owner: str = Field(default="", max_length=96)
+    #: Left unset, the sensitivity's own floor is applied.
+    min_trust_score: int | None = Field(default=None, ge=0, le=100)
+
+
+class ResourceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=128)
+    description: str | None = None
+    category: str | None = Field(default=None, max_length=64)
+    sensitivity: str | None = Field(
+        default=None, pattern="^(PUBLIC|INTERNAL|CONFIDENTIAL|RESTRICTED)$"
+    )
+    owner: str | None = Field(default=None, max_length=96)
+    min_trust_score: int | None = Field(default=None, ge=0, le=100)
+    enabled: bool | None = None
 
 
 class PolicyEvaluationOut(BaseModel):
