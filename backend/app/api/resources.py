@@ -107,15 +107,10 @@ def catalogue(
             continue
         rows.append(
             ResourceReachability(
-                id=resource.id,
-                slug=resource.slug,
-                name=resource.name,
-                description=resource.description,
-                category=resource.category,
-                sensitivity=resource.sensitivity.value,
-                min_trust_score=resource.min_trust_score,
-                owner=resource.owner,
-                enabled=resource.enabled,
+                # Built from _to_out so every ResourceOut field (including
+                # the file metadata) rides along automatically — a field
+                # added to ResourceOut later cannot silently go missing here.
+                **_to_out(resource).model_dump(),
                 reachable=decision.granted,
                 action=decision.action.value,
                 reason=decision.reason,

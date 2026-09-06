@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +12,14 @@ from sqlalchemy.orm import Session
 from app.models.resource import Resource
 from app.models.user import User
 from tests.conftest import auth_headers, sign_in
+
+
+@pytest.fixture(autouse=True)
+def storage_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "app.core.config.settings.resource_storage_dir", tmp_path / "resources"
+    )
+    yield
 
 
 def test_an_admin_creates_a_resource(
@@ -160,3 +171,35 @@ def test_an_admin_with_include_disabled_sees_it(
 
     assert listing.status_code == 200
     assert any(row["slug"] == "hr-portal" for row in listing.json())
+
+
+def test_the_catalogue_reports_file_metadata(
+    client: TestClient, admin: User, catalogue: dict[str, Resource]
+) -> None:
+    """The bug this guards against: the catalogue endpoint built its rows
+
+    from an explicit keyword list that never carried has_file/file_name/
+    content_type/file_size, so every resource showed as fileless no matter
+    what the row actually held.
+    """
+    tokens = sign_in(client, admin)
+    upload = client.post(
+        "/api/resources/public-docs/file",
+        headers=auth_headers(tokens),
+        files={"file": ("product-documentation.md", b"# Docs", "text/markdown")},
+    )
+    assert upload.status_code == 200, upload.text
+
+    listing = client.get("/api/resources", headers=auth_headers(tokens))
+    assert listing.status_code == 200
+    rows = {row["slug"]: row for row in listing.json()}
+
+    with_file = rows["public-docs"]
+    assert with_file["has_file"] is True
+    assert with_file["file_name"] == "product-documentation.md"
+    assert with_file["content_type"] == "text/markdown"
+    assert with_file["file_size"] == len(b"# Docs")
+
+    without_file = rows["hr-portal"]
+    assert without_file["has_file"] is False
+    assert without_file["file_name"] is None
