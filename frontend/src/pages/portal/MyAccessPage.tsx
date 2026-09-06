@@ -1,3 +1,4 @@
+import axios from "axios";
 import { useCallback, useEffect, useState } from "react";
 import {
   blobErrorMessage, getResourceContent, getResources, requestAccess,
@@ -173,7 +174,33 @@ export default function MyAccessPage() {
         setContent(await getResourceContent(resource.slug));
       }
     } catch (err) {
-      setError(await blobErrorMessage(err, "Access was refused."));
+      if (axios.isAxiosError(err) && err.response?.status === 403) {
+        // A denial. Build the same decision shape a grant would have
+        // produced, from the response headers plus what we already know
+        // about this resource, so DecisionPanel can show the full picture
+        // instead of a one-line error.
+        const headers = err.response.headers as Record<string, unknown>;
+        const gate = typeof headers["x-access-gate"] === "string"
+          ? headers["x-access-gate"]
+          : "";
+        const parsedScore = Number(headers["x-trust-score"]);
+        setDecision({
+          resource: resource.slug,
+          sensitivity: resource.sensitivity,
+          granted: false,
+          action: resource.action,
+          reason: await blobErrorMessage(err, "Access was refused."),
+          gate,
+          matched_policy: resource.matched_policy,
+          required_score: resource.required_score,
+          trust_score: Number.isFinite(parsedScore) ? parsedScore : 0,
+          risk_level: "",
+          latency_ms: 0,
+          policies_evaluated: [],
+        });
+      } else {
+        setError(await blobErrorMessage(err, "Access was refused."));
+      }
     } finally {
       setBusy(false);
       load();

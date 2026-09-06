@@ -411,7 +411,10 @@ def request_access(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=decision.reason,
-            headers={"X-Access-Gate": decision.gate or "trust"},
+            headers={
+                "X-Access-Gate": decision.gate or "trust",
+                "X-Trust-Score": f"{row.score_at_request:.1f}",
+            },
         )
     return payload
 
