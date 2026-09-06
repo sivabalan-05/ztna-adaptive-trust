@@ -13,6 +13,8 @@ import MyAccessPage from "./pages/portal/MyAccessPage";
 import MyActivityPage from "./pages/portal/MyActivityPage";
 import MyDevicesPage from "./pages/portal/MyDevicesPage";
 import MyTrustPage from "./pages/portal/MyTrustPage";
+import PoliciesPage from "./pages/PoliciesPage";
+import ResourcesAdminPage from "./pages/ResourcesAdminPage";
 import RevocationPage from "./pages/RevocationPage";
 import RiskScoresPage from "./pages/RiskScoresPage";
 import SessionPage from "./pages/SessionPage";
@@ -83,6 +85,8 @@ function Gate() {
           <Route element={<AppShell />}>
             <Route index element={<OverviewPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="resources" element={<ResourcesAdminPage />} />
+            <Route path="policies" element={<PoliciesPage />} />
             <Route path="live" element={<LiveMonitoringPage />} />
             <Route path="risk" element={<RiskScoresPage />} />
             <Route path="alerts" element={<AlertsPage />} />

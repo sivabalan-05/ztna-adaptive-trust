@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSessions, revokeSession, verifyNow, type LiveSession } from "../api/client";
+import { usePermissions } from "../auth/usePermissions";
 import Page, { Card, Empty, RiskChip } from "../components/layout/Page";
 import { useLive } from "../live/LiveContext";
 
@@ -11,6 +12,7 @@ import { useLive } from "../live/LiveContext";
  * here at the moment the engine changes its mind — not on the next refresh.
  */
 export default function LiveMonitoringPage() {
+  const { can } = usePermissions();
   const [rows, setRows] = useState<LiveSession[]>([]);
   const [flash, setFlash] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
@@ -164,12 +166,14 @@ export default function LiveMonitoringPage() {
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        <button
-                          onClick={() => kill(row)}
-                          className="rounded border border-red-200 px-2.5 py-1 text-xs text-risk-critical hover:bg-red-50"
-                        >
-                          Revoke
-                        </button>
+                        {can("sessions:revoke") && (
+                          <button
+                            onClick={() => kill(row)}
+                            className="rounded border border-red-200 px-2.5 py-1 text-xs text-risk-critical hover:bg-red-50"
+                          >
+                            Revoke
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

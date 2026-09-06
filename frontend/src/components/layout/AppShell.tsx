@@ -5,6 +5,8 @@ import { useLive } from "../../live/LiveContext";
 const NAV = [
   { to: "/", label: "Overview", end: true },
   { to: "/users", label: "Users & Devices" },
+  { to: "/resources", label: "Resources" },
+  { to: "/policies", label: "Policies" },
   { to: "/live", label: "Live Monitoring" },
   { to: "/risk", label: "Risk Scores" },
   { to: "/alerts", label: "Alerts" },

@@ -3,9 +3,11 @@ import {
   approveDevice, getAllDevices, getRoles, getUsers, revokeDevice, updateUser,
   type DeviceInfo, type RoleRow, type UserRow,
 } from "../api/client";
+import { usePermissions } from "../auth/usePermissions";
 import Page, { Card, Empty, RiskChip } from "../components/layout/Page";
 
 export default function UsersPage() {
+  const { can } = usePermissions();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
@@ -113,18 +115,22 @@ export default function UsersPage() {
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <select
-                        value={user.role}
-                        onChange={(e) => changeRole(user, e.target.value)}
-                        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
-                        aria-label={`Role for ${user.username}`}
-                      >
-                        {roles.map((role) => (
-                          <option key={role.name} value={role.name}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
+                      {can("users:write") ? (
+                        <select
+                          value={user.role}
+                          onChange={(e) => changeRole(user, e.target.value)}
+                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                          aria-label={`Role for ${user.username}`}
+                        >
+                          {roles.map((role) => (
+                            <option key={role.name} value={role.name}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-sm text-slate-700">{user.role}</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       {user.is_locked ? (
@@ -160,7 +166,7 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      {user.is_locked && (
+                      {can("users:write") && user.is_locked && (
                         <button
                           onClick={() => unlock(user)}
                           className="rounded border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50"
@@ -226,7 +232,7 @@ export default function UsersPage() {
                         {new Date(device.last_seen_at).toLocaleString()}
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        {device.status !== "APPROVED" && (
+                        {can("devices:approve") && device.status !== "APPROVED" && (
                           <button
                             onClick={() =>
                               approveDevice(device.id).then(load)
@@ -236,7 +242,7 @@ export default function UsersPage() {
                             Approve
                           </button>
                         )}
-                        {device.status !== "REVOKED" && (
+                        {can("devices:revoke") && device.status !== "REVOKED" && (
                           <button
                             onClick={() => revokeDevice(device.id).then(load)}
                             className="rounded border border-red-200 px-2.5 py-1 text-xs text-risk-critical hover:bg-red-50"

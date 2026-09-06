@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSessions, revokeSession, type LiveSession } from "../api/client";
+import { usePermissions } from "../auth/usePermissions";
 import Page, { Card, Empty, RiskChip } from "../components/layout/Page";
 import { useLive } from "../live/LiveContext";
 
 export default function RevocationPage() {
+  const { can } = usePermissions();
   const [rows, setRows] = useState<LiveSession[]>([]);
   const [selected, setSelected] = useState<LiveSession | null>(null);
   const [reason, setReason] = useState("Revoked by an administrator.");
@@ -55,13 +57,15 @@ export default function RevocationPage() {
             className="mt-1 w-full max-w-lg rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
           />
           <div className="mt-3 flex gap-2">
-            <button
-              onClick={confirm}
-              disabled={reason.trim().length < 3}
-              className="rounded-lg bg-risk-critical px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              Terminate session
-            </button>
+            {can("sessions:revoke") && (
+              <button
+                onClick={confirm}
+                disabled={reason.trim().length < 3}
+                className="rounded-lg bg-risk-critical px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Terminate session
+              </button>
+            )}
             <button
               onClick={() => setSelected(null)}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
@@ -114,12 +118,14 @@ export default function RevocationPage() {
                         {new Date(row.started_at).toLocaleString()}
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        <button
-                          onClick={() => setSelected(row)}
-                          className="rounded border border-red-200 px-2.5 py-1 text-xs text-risk-critical hover:bg-red-50"
-                        >
-                          Revoke…
-                        </button>
+                        {can("sessions:revoke") && (
+                          <button
+                            onClick={() => setSelected(row)}
+                            className="rounded border border-red-200 px-2.5 py-1 text-xs text-risk-critical hover:bg-red-50"
+                          >
+                            Revoke…
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
