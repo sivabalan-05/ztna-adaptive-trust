@@ -48,6 +48,7 @@ class AccessService:
         bundle: ContextBundle,
         device: Device | None = None,
         method: str = "GET",
+        path: str | None = None,
     ) -> tuple[PolicyDecision, AccessRequest]:
         started = time.perf_counter()
 
@@ -84,7 +85,7 @@ class AccessService:
             trust_score_id=score_row.id,
             requested_at=utcnow(),
             method=method,
-            path=f"/api/resources/{resource.slug}",
+            path=path or f"/api/resources/{resource.slug}",
             ip_address=bundle.ip_address,
             score_at_request=assessment.score,
             risk_level=assessment.risk_level,

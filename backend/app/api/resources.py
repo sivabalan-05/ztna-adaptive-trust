@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from fastapi import (
@@ -34,6 +35,22 @@ from app.services.trust_service import TrustService
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
 logger = logging.getLogger(__name__)
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _safe_disposition_filename(name: str | None) -> str:
+    """Escape a stored display name for use in a ``Content-Disposition`` header.
+
+    ``file_name`` is user-supplied at upload time. Naive interpolation would
+    let a crafted name (an embedded quote or a control character) inject
+    extra disposition parameters or split the header. Strip control
+    characters and backslash-escape backslashes and quotes.
+    """
+    cleaned = _CONTROL_CHARS.sub("", name or "").replace("\\", "\\\\").replace(
+        '"', '\\"'
+    )
+    return cleaned or "download"
 
 
 @router.get(
@@ -134,10 +151,6 @@ def resource_content(
     resource = db.scalar(select(Resource).where(Resource.slug == slug))
     if resource is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found.")
-    if not resource.has_file:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, "This resource has no file attached."
-        )
 
     decision, row = AccessService.request_access(
         db,
@@ -147,11 +160,14 @@ def resource_content(
         bundle=bundle,
         device=principal.device,
         method="GET",
+        path=f"/api/resources/{slug}/content",
     )
 
     if not decision.granted:
         # Commit before raising: the refusal, the score behind it and the
-        # audit record must outlive the 403.
+        # audit record must outlive the 403. This runs before the has_file
+        # check below, so a caller the policy would refuse never learns
+        # whether the resource even has a file attached.
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -160,6 +176,15 @@ def resource_content(
                 "X-Access-Gate": decision.gate or "trust",
                 "X-Trust-Score": f"{row.score_at_request:.1f}",
             },
+        )
+
+    if not resource.has_file:
+        # Commit here too: the decision was granted and already counted
+        # toward enumeration and the audit chain — that evidence must not
+        # disappear just because this request happens to 404.
+        db.commit()
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "This resource has no file attached."
         )
 
     try:
@@ -176,7 +201,9 @@ def resource_content(
         content=data,
         media_type=resource.content_type or "application/octet-stream",
         headers={
-            "Content-Disposition": f'inline; filename="{resource.file_name}"',
+            "Content-Disposition": (
+                f'inline; filename="{_safe_disposition_filename(resource.file_name)}"'
+            ),
             "X-Access-Gate": "granted",
             "X-Trust-Score": f"{row.score_at_request:.1f}",
         },

@@ -52,6 +52,28 @@ def test_a_permitted_user_receives_the_bytes(
     assert response.headers["content-type"].startswith("text/plain")
 
 
+def test_a_delivery_is_recorded_with_a_content_path(
+    client: TestClient, admin: User, user: User,
+    catalogue: dict[str, Resource], db: Session,
+) -> None:
+    """A byte delivery must be distinguishable in the log from a mere
+    ``POST /{slug}/access`` probe — the audit trail needs to tell them
+    apart."""
+    attach(client, admin, "public-docs")
+    tokens = sign_in(client, user)
+
+    response = client.get(
+        "/api/resources/public-docs/content", headers=auth_headers(tokens)
+    )
+    assert response.status_code == 200, response.text
+
+    requests = db.scalars(
+        select(AccessRequest).where(AccessRequest.user_id == user.id)
+    ).all()
+    assert len(requests) == 1
+    assert requests[0].path.endswith("/content")
+
+
 def test_delivery_is_refused_when_clearance_is_too_low(
     client: TestClient, admin: User, contractor: User,
     catalogue: dict[str, Resource],
