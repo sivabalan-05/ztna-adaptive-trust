@@ -118,7 +118,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=["X-Request-ID", "X-Access-Gate", "X-Trust-Score"],
     )
 
     # --- Error handling: clients get a message, logs get the traceback ------

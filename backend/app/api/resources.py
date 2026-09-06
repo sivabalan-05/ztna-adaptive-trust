@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import (
@@ -32,6 +33,7 @@ from app.services.policy_engine import PolicyEngine
 from app.services.trust_service import TrustService
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -106,6 +108,79 @@ def catalogue(
             )
         )
     return rows
+
+
+@router.get(
+    "/{slug}/content",
+    summary="View or download — enforced on every single request",
+    responses={
+        403: {"description": "Refused by clearance, policy or trust"},
+        404: {"description": "No such resource, or no file attached"},
+    },
+)
+def resource_content(
+    slug: str,
+    principal: Principal = Depends(get_principal),
+    bundle: ContextBundle = Depends(get_context_bundle),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Stream a resource's file, but only as the outcome of a live decision.
+
+    This calls the same enforcement point as ``POST /{slug}/access``, so the
+    session is re-scored against the context of *this* request and the
+    decision is written to the access log and the audit chain before any byte
+    leaves the server. There is no other route to the stored file.
+    """
+    resource = db.scalar(select(Resource).where(Resource.slug == slug))
+    if resource is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found.")
+    if not resource.has_file:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "This resource has no file attached."
+        )
+
+    decision, row = AccessService.request_access(
+        db,
+        user=principal.user,
+        session=principal.session,
+        resource=resource,
+        bundle=bundle,
+        device=principal.device,
+        method="GET",
+    )
+
+    if not decision.granted:
+        # Commit before raising: the refusal, the score behind it and the
+        # audit record must outlive the 403.
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=decision.reason,
+            headers={
+                "X-Access-Gate": decision.gate or "trust",
+                "X-Trust-Score": f"{row.score_at_request:.1f}",
+            },
+        )
+
+    try:
+        data = storage.read(resource.file_path or "")
+    except storage.StorageError as exc:
+        logger.error(
+            "Resource %s points at missing file %s", resource.slug, resource.file_path
+        )
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, exc.message
+        ) from exc
+
+    return Response(
+        content=data,
+        media_type=resource.content_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'inline; filename="{resource.file_name}"',
+            "X-Access-Gate": "granted",
+            "X-Trust-Score": f"{row.score_at_request:.1f}",
+        },
+    )
 
 
 @router.get("/{slug}", response_model=ResourceOut, summary="One resource")
