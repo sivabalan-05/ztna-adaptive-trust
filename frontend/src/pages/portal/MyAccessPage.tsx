@@ -84,6 +84,11 @@ function ContentView({
 
 /** The decision the enforcement point returned, shown in full. */
 function DecisionPanel({ decision }: { decision: AccessDecision }) {
+  // A denial synthesised from 403 headers has no real latency figure — omit
+  // the cell rather than print a false "0.0 ms". Granted decisions always
+  // carry the server's measured latency.
+  const knowsLatency = decision.latency_ms !== null;
+
   return (
     <div
       className={`mt-4 rounded-lg p-4 text-sm ring-1 ring-inset ${
@@ -96,7 +101,11 @@ function DecisionPanel({ decision }: { decision: AccessDecision }) {
         {decision.granted ? "Access granted" : "Access denied"}
       </div>
       <p className="mt-1">{decision.reason}</p>
-      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-4">
+      <dl
+        className={`mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs ${
+          knowsLatency ? "sm:grid-cols-4" : "sm:grid-cols-3"
+        }`}
+      >
         <div>
           <dt className="text-slate-500">Deciding gate</dt>
           <dd className="font-medium">{decision.gate || "—"}</dd>
@@ -109,12 +118,14 @@ function DecisionPanel({ decision }: { decision: AccessDecision }) {
           <dt className="text-slate-500">Required</dt>
           <dd className="font-mono font-medium">{decision.required_score}</dd>
         </div>
-        <div>
-          <dt className="text-slate-500">Decided in</dt>
-          <dd className="font-mono font-medium">
-            {decision.latency_ms.toFixed(1)} ms
-          </dd>
-        </div>
+        {knowsLatency && (
+          <div>
+            <dt className="text-slate-500">Decided in</dt>
+            <dd className="font-mono font-medium">
+              {decision.latency_ms!.toFixed(1)} ms
+            </dd>
+          </div>
+        )}
       </dl>
       {decision.policies_evaluated.length > 0 && (
         <details className="mt-3">
@@ -195,7 +206,7 @@ export default function MyAccessPage() {
           required_score: resource.required_score,
           trust_score: Number.isFinite(parsedScore) ? parsedScore : 0,
           risk_level: "",
-          latency_ms: 0,
+          latency_ms: null,
           policies_evaluated: [],
         });
       } else {

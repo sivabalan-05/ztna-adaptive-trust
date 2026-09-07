@@ -182,3 +182,31 @@ def test_a_disabled_resource_refuses_delivery(
 
     assert response.status_code in {403, 404}
     assert response.content != b"file contents"
+
+
+def test_a_missing_stored_file_still_leaves_the_access_request_on_record(
+    client: TestClient, admin: User, user: User,
+    catalogue: dict[str, Resource], db: Session, tmp_path: Path,
+) -> None:
+    """A resource row can point at a file that has gone missing from disk —
+    the storage read then fails with a 500, but the access decision that was
+    already made (and its audit trail) must not vanish along with it."""
+    attach(client, admin, "public-docs", b"published documentation")
+
+    resource = db.scalar(select(Resource).where(Resource.slug == "public-docs"))
+    assert resource is not None and resource.file_path
+    stored_file = tmp_path / "resources" / resource.file_path
+    assert stored_file.is_file()
+    stored_file.unlink()
+
+    tokens = sign_in(client, user)
+    response = client.get(
+        "/api/resources/public-docs/content", headers=auth_headers(tokens)
+    )
+
+    assert response.status_code == 500, response.text
+
+    surviving = db.scalars(
+        select(AccessRequest).where(AccessRequest.user_id == user.id)
+    ).all()
+    assert len(surviving) == 1, "the access decision must survive the 500"

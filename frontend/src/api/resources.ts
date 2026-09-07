@@ -45,7 +45,9 @@ export interface AccessDecision {
   required_score: number;
   trust_score: number;
   risk_level: string;
-  latency_ms: number;
+  // null on a denial synthesised client-side from 403 headers, where no real
+  // figure is available — never render that case as if it were a measured 0.
+  latency_ms: number | null;
   policies_evaluated: PolicyEvaluation[];
 }
 

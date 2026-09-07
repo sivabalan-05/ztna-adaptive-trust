@@ -185,6 +185,8 @@ def resource_content(
     try:
         data = storage.read(resource.file_path or "")
     except storage.StorageError as exc:
+        # Commit first: the grant and its audit entry must outlive this 500.
+        db.commit()
         logger.error(
             "Resource %s points at missing file %s", resource.slug, resource.file_path
         )

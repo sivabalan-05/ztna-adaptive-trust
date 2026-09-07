@@ -63,6 +63,31 @@ def test_a_traversal_path_cannot_escape_the_storage_root() -> None:
     assert excinfo.value.code == "path_escape"
 
 
+def test_an_absolute_path_cannot_escape_the_storage_root() -> None:
+    """Regression lock: the guard must reject an absolute path outright, not
+    just a relative ``..`` traversal. Passes unmodified against the current
+    implementation."""
+    with pytest.raises(storage.StorageError) as excinfo:
+        storage.read("/etc/passwd")
+
+    assert excinfo.value.code == "path_escape"
+
+
+def test_a_symlink_inside_the_root_cannot_escape_it(tmp_path: Path) -> None:
+    """Regression lock: a symlink planted inside the storage root that points
+    outside it must not be followed. Passes unmodified against the current
+    implementation."""
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("do not serve this")
+    link = storage.storage_root() / "escape-link.txt"
+    link.symlink_to(outside)
+
+    with pytest.raises(storage.StorageError) as excinfo:
+        storage.read("escape-link.txt")
+
+    assert excinfo.value.code == "path_escape"
+
+
 def test_clear_removes_every_stored_file() -> None:
     storage.save(b"one", "text/plain")
     storage.save(b"two", "text/plain")
