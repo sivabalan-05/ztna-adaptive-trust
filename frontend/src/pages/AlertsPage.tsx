@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   acknowledgeAlert, getAlerts, resolveAlert, type AlertRow,
 } from "../api/client";
+import ConfirmAction from "../components/ConfirmAction";
 import Page, { Card, Empty } from "../components/layout/Page";
 import { SEVERITY_CHIP } from "../components/charts/palette";
 import { useLive } from "../live/LiveContext";
@@ -14,6 +15,7 @@ export default function AlertsPage() {
   const [tab, setTab] = useState<string>("OPEN");
   const [severity, setSeverity] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [pendingResolve, setPendingResolve] = useState<AlertRow | null>(null);
   const { lastEvent } = useLive();
 
   const load = useCallback(() => {
@@ -42,12 +44,7 @@ export default function AlertsPage() {
     load();
   }
 
-  async function onResolve(alert: AlertRow) {
-    const note = window.prompt(
-      "Resolution note — what did you find?",
-      "Investigated and contained.",
-    );
-    if (note === null) return;
+  async function onResolve(alert: AlertRow, note: string) {
     await resolveAlert(alert.id, note);
     load();
   }
@@ -72,6 +69,25 @@ export default function AlertsPage() {
         </select>
       }
     >
+      {pendingResolve && (
+        <div className="mb-4">
+          <ConfirmAction
+            title={`Resolve "${pendingResolve.title}"?`}
+            description="Resolution note — what did you find? It is written to the audit chain."
+            textInput={{
+              label: "Resolution note",
+              defaultValue: "Investigated and contained.",
+            }}
+            confirmLabel="Resolve alert"
+            onConfirm={(note) => {
+              onResolve(pendingResolve, note ?? "");
+              setPendingResolve(null);
+            }}
+            onCancel={() => setPendingResolve(null)}
+          />
+        </div>
+      )}
+
       <div className="mb-4 flex gap-1">
         {STATUS_TABS.map((s) => (
           <button
@@ -152,7 +168,7 @@ export default function AlertsPage() {
                     )}
                     {alert.status !== "RESOLVED" && (
                       <button
-                        onClick={() => onResolve(alert)}
+                        onClick={() => setPendingResolve(alert)}
                         className="rounded border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50"
                       >
                         Resolve

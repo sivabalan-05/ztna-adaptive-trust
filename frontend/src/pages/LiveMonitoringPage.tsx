@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSessions, revokeSession, verifyNow, type LiveSession } from "../api/client";
 import { usePermissions } from "../auth/usePermissions";
+import ConfirmAction from "../components/ConfirmAction";
 import Page, { Card, Empty, RiskChip } from "../components/layout/Page";
 import { useLive } from "../live/LiveContext";
 
@@ -16,6 +17,7 @@ export default function LiveMonitoringPage() {
   const [rows, setRows] = useState<LiveSession[]>([]);
   const [flash, setFlash] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [pendingKill, setPendingKill] = useState<LiveSession | null>(null);
   const { lastEvent, status } = useLive();
 
   const load = useCallback(() => {
@@ -55,12 +57,7 @@ export default function LiveMonitoringPage() {
     }
   }, [lastEvent]);
 
-  async function kill(row: LiveSession) {
-    const reason = window.prompt(
-      `Revoke ${row.username}'s session? Give a reason — it is written to the audit chain.`,
-      "Revoked by an administrator.",
-    );
-    if (!reason) return;
+  async function kill(row: LiveSession, reason: string) {
     await revokeSession(row.id, reason);
     setRows((current) => current.filter((r) => r.id !== row.id));
   }
@@ -92,6 +89,27 @@ export default function LiveMonitoringPage() {
         </>
       }
     >
+      {pendingKill && (
+        <div className="mb-4">
+          <ConfirmAction
+            title={`Revoke ${pendingKill.username}'s session?`}
+            description="Give a reason — it is written to the audit chain."
+            textInput={{
+              label: "Reason",
+              defaultValue: "Revoked by an administrator.",
+              minLength: 3,
+            }}
+            confirmLabel="Revoke session"
+            destructive
+            onConfirm={(reason) => {
+              kill(pendingKill, reason ?? "");
+              setPendingKill(null);
+            }}
+            onCancel={() => setPendingKill(null)}
+          />
+        </div>
+      )}
+
       <Card>
         {rows.length === 0 ? (
           <Empty>No active sessions.</Empty>
@@ -168,7 +186,7 @@ export default function LiveMonitoringPage() {
                       <td className="px-3 py-2.5 text-right">
                         {can("sessions:revoke") && (
                           <button
-                            onClick={() => kill(row)}
+                            onClick={() => setPendingKill(row)}
                             className="rounded border border-red-200 px-2.5 py-1 text-xs text-risk-critical hover:bg-red-50"
                           >
                             Revoke

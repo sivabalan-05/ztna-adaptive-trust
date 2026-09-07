@@ -4,6 +4,7 @@ import {
   type PolicyRow,
 } from "../api/client";
 import { usePermissions } from "../auth/usePermissions";
+import ConfirmAction from "../components/ConfirmAction";
 import Page, { Card, Empty } from "../components/layout/Page";
 
 const SENSITIVITIES = ["", "PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"];
@@ -27,6 +28,7 @@ export default function PoliciesPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [pendingDelete, setPendingDelete] = useState<PolicyRow | null>(null);
 
   const load = useCallback(() => {
     getPolicies().then(setPolicies).catch(() => setPolicies([]));
@@ -65,10 +67,6 @@ export default function PoliciesPage() {
   }
 
   async function onDelete(policy: PolicyRow) {
-    const ok = window.confirm(
-      `Delete policy "${policy.name}"? This cannot be undone, and removing it immediately changes who can reach what — any access it was allowing or denying reverts to whatever the next-highest-priority policy decides.`,
-    );
-    if (!ok) return;
     setError("");
     try {
       await deletePolicy(policy.id);
@@ -86,6 +84,22 @@ export default function PoliciesPage() {
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-risk-critical">
           {error}
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="mb-4">
+          <ConfirmAction
+            title={`Delete policy "${pendingDelete.name}"?`}
+            description="This cannot be undone, and removing it immediately changes who can reach what — any access it was allowing or denying reverts to whatever the next-highest-priority policy decides."
+            confirmLabel="Delete policy"
+            destructive
+            onConfirm={() => {
+              onDelete(pendingDelete);
+              setPendingDelete(null);
+            }}
+            onCancel={() => setPendingDelete(null)}
+          />
         </div>
       )}
 
@@ -256,7 +270,7 @@ export default function PoliciesPage() {
                             {policy.enabled ? "Disable" : "Enable"}
                           </button>
                           <button
-                            onClick={() => onDelete(policy)}
+                            onClick={() => setPendingDelete(policy)}
                             className="rounded border border-slate-300 px-2 py-1 text-xs text-risk-critical hover:bg-red-50"
                           >
                             Delete

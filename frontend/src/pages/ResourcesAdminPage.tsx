@@ -4,6 +4,7 @@ import {
   updateResource, uploadResourceFile, type ResourceReachability,
 } from "../api/client";
 import { usePermissions } from "../auth/usePermissions";
+import ConfirmAction from "../components/ConfirmAction";
 import Page, { Card, Empty } from "../components/layout/Page";
 
 const SENSITIVITIES = ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"];
@@ -41,6 +42,7 @@ export default function ResourcesAdminPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [pendingDisable, setPendingDisable] = useState<ResourceReachability | null>(null);
 
   const load = useCallback(() => {
     getResources(true).then(setResources).catch(() => setResources([]));
@@ -80,10 +82,6 @@ export default function ResourcesAdminPage() {
   }
 
   async function onDisable(resource: ResourceReachability) {
-    const ok = window.confirm(
-      `Disable "${resource.name}"? It stops being reachable and drops out of the default catalogue view, but it is not deleted — you can re-enable it here at any time.`,
-    );
-    if (!ok) return;
     setError("");
     try {
       await disableResource(resource.slug);
@@ -121,6 +119,22 @@ export default function ResourcesAdminPage() {
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-risk-critical">
           {error}
+        </div>
+      )}
+
+      {pendingDisable && (
+        <div className="mb-4">
+          <ConfirmAction
+            title={`Disable "${pendingDisable.name}"?`}
+            description="It stops being reachable and drops out of the default catalogue view, but it is not deleted — you can re-enable it here at any time."
+            confirmLabel="Disable resource"
+            destructive
+            onConfirm={() => {
+              onDisable(pendingDisable);
+              setPendingDisable(null);
+            }}
+            onCancel={() => setPendingDisable(null)}
+          />
         </div>
       )}
 
@@ -270,7 +284,7 @@ export default function ResourcesAdminPage() {
                           </label>
                           {resource.enabled ? (
                             <button
-                              onClick={() => onDisable(resource)}
+                              onClick={() => setPendingDisable(resource)}
                               className="rounded border border-slate-300 px-2 py-1 text-xs text-risk-critical hover:bg-red-50"
                             >
                               Disable
