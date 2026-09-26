@@ -49,7 +49,7 @@ export default function RiskDonut({
               startAngle={90}
               endAngle={-270}
               paddingAngle={2}
-              stroke="#fcfcfb"
+              stroke="#fafaf7"
               strokeWidth={2}
               isAnimationActive={false}
             >
@@ -64,7 +64,7 @@ export default function RiskDonut({
               ]}
               contentStyle={{
                 borderRadius: 8,
-                border: "1px solid #e7e5e4",
+                border: "1px solid #d9dbd6",
                 fontSize: 12,
               }}
             />

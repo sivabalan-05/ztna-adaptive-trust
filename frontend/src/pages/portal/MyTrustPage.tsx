@@ -56,6 +56,7 @@ export default function MyTrustPage() {
 
   return (
     <Page
+      eyebrow="Your workspace"
       title="Trust & policy"
       description="How your score is calculated, what it currently is, and what would move it."
       actions={

@@ -26,6 +26,7 @@ export default function MyDevicesPage() {
 
   return (
     <Page
+      eyebrow="Your workspace"
       title="My devices"
       description="Every device you have signed in from. An unapproved device lowers your trust score until an administrator approves it."
     >

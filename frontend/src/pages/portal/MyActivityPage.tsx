@@ -22,6 +22,7 @@ export default function MyActivityPage() {
 
   return (
     <Page
+      eyebrow="Your workspace"
       title="My activity"
       description="Every access decision made about this account, and every session it currently holds."
     >

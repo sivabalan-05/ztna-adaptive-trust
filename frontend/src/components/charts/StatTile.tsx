@@ -15,20 +15,11 @@ export default function StatTile({
   hint?: string;
   tone?: "neutral" | "warn" | "bad";
 }) {
-  const valueTone =
-    tone === "bad"
-      ? "text-risk-critical"
-      : tone === "warn"
-        ? "text-orange-700"
-        : "text-slate-900";
-
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={`mt-1 text-2xl font-semibold tabular-nums ${valueTone}`}>
-        {value}
-      </div>
-      {hint && <div className="mt-0.5 text-xs text-slate-500">{hint}</div>}
+    <div data-scroll-reveal className={`metric-card ${tone === "warn" ? "metric-warn" : tone === "bad" ? "metric-bad" : ""}`}>
+      <div className="metric-label">{label}</div>
+      <div className="metric-value tabular-nums">{value}</div>
+      {hint && <div className="metric-hint">{hint}</div>}
     </div>
   );
 }

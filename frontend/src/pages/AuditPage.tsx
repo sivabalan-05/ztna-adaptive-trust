@@ -161,14 +161,17 @@ export default function AuditPage() {
                 <tbody className="divide-y divide-slate-100">
                   {records.map((r) => (
                     <Fragment key={r.seq}>
-                      <tr
-                        onClick={() =>
-                          setExpanded(expanded === r.seq ? null : r.seq)
-                        }
-                        className="cursor-pointer hover:bg-slate-50"
-                      >
+                      <tr className="hover:bg-slate-50">
                         <td className="px-3 py-2 font-mono text-xs tabular-nums text-slate-500">
-                          {r.seq}
+                          <button
+                            type="button"
+                            className="audit-row-toggle"
+                            aria-expanded={expanded === r.seq}
+                            aria-label={`${expanded === r.seq ? "Collapse" : "Expand"} audit record ${r.seq}`}
+                            onClick={() => setExpanded(expanded === r.seq ? null : r.seq)}
+                          >
+                            {r.seq}
+                          </button>
                         </td>
                         <td className="px-3 py-2 text-xs text-slate-600">
                           {new Date(r.timestamp).toLocaleString()}

@@ -2,7 +2,7 @@ import {
   CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import { GRID, INK_MUTED, TREND_COLOR } from "./palette";
+import { GRID, INK_MUTED, riskColor, TREND_COLOR } from "./palette";
 
 interface Point {
   at: string;
@@ -46,10 +46,10 @@ export default function TrustTrend({
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={points} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
         {/* Band regions: the scale's meaning, drawn recessively behind the data. */}
-        <ReferenceArea y1={0} y2={40} fill="#d03b3b" fillOpacity={0.05} />
-        <ReferenceArea y1={40} y2={60} fill="#ec835a" fillOpacity={0.05} />
-        <ReferenceArea y1={60} y2={80} fill="#fab219" fillOpacity={0.05} />
-        <ReferenceArea y1={80} y2={100} fill="#0ca30c" fillOpacity={0.05} />
+        <ReferenceArea y1={0} y2={40} fill={riskColor("CRITICAL")} fillOpacity={0.05} />
+        <ReferenceArea y1={40} y2={60} fill={riskColor("HIGH")} fillOpacity={0.05} />
+        <ReferenceArea y1={60} y2={80} fill={riskColor("MEDIUM")} fillOpacity={0.05} />
+        <ReferenceArea y1={80} y2={100} fill={riskColor("LOW")} fillOpacity={0.05} />
 
         <CartesianGrid stroke={GRID} strokeDasharray="2 4" vertical={false} />
         <XAxis
@@ -79,7 +79,7 @@ export default function TrustTrend({
           formatter={(value: number) => [value.toFixed(1), label]}
           contentStyle={{
             borderRadius: 8,
-            border: "1px solid #e7e5e4",
+            border: "1px solid #d9dbd6",
             fontSize: 12,
           }}
           cursor={{ stroke: INK_MUTED, strokeDasharray: "3 3" }}
@@ -90,7 +90,7 @@ export default function TrustTrend({
           stroke={TREND_COLOR}
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 4, strokeWidth: 2, stroke: "#fcfcfb" }}
+          activeDot={{ r: 4, strokeWidth: 2, stroke: "#fafaf7" }}
           isAnimationActive={false}
         />
       </LineChart>

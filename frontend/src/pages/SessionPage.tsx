@@ -1,5 +1,6 @@
 import { useAuth } from "../auth/AuthContext";
 import TrustPanel from "../components/TrustPanel";
+import Page, { Card } from "../components/layout/Page";
 
 const RISK_STYLES: Record<string, string> = {
   LOW: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
@@ -24,48 +25,35 @@ export default function SessionPage() {
   const { session } = me;
 
   return (
-    <div className="p-8">
-      <div className="flex items-start justify-between gap-6">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">
-            Authenticated session
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Password and TOTP both verified. This session is re-checked on
-            every request.
-          </p>
-        </div>
-        <div
-          className={`rounded-full px-4 py-2 text-sm font-medium ring-1 ring-inset ${
-            RISK_STYLES[session.current_risk_level] ?? RISK_STYLES.LOW
-          }`}
-        >
+    <Page
+      eyebrow="Your workspace"
+      title="Authenticated session"
+      description="Password and TOTP both verified. This session is re-checked on every request."
+      actions={
+        <span className={`rounded-full px-3 py-1.5 text-[10px] font-semibold tracking-wide ring-1 ring-inset ${RISK_STYLES[session.current_risk_level] ?? RISK_STYLES.LOW}`}>
           Session {session.current_risk_level}
-        </div>
-      </div>
-
-      <div className="mt-8">
+        </span>
+      }
+    >
+      <div className="surface-panel mt-5 p-5 sm:p-6">
         <TrustPanel />
       </div>
 
-      <h2 className="mt-8 text-sm font-semibold text-slate-900">Session</h2>
-      <dl className="mt-3 grid max-w-4xl grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:grid-cols-3">
-        <Field label="Status" value={session.status} />
-        <Field label="MFA" value={session.mfa_passed ? "verified" : "pending"} />
-        <Field label="Action" value={session.current_action} />
-        <Field label="IP address" value={session.ip_address || "—"} />
-        <Field label="Requests" value={String(session.request_count)} />
-        <Field
-          label="Started"
-          value={new Date(session.started_at).toLocaleString()}
-        />
-        <Field
-          label="Expires"
-          value={new Date(session.expires_at).toLocaleString()}
-        />
-        <Field label="Role" value={me.role} />
-        <Field label="Department" value={me.department || "—"} />
-      </dl>
+      <div className="mt-4 max-w-5xl">
+        <Card title="Session details">
+          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:grid-cols-3">
+            <Field label="Status" value={session.status} />
+            <Field label="MFA" value={session.mfa_passed ? "verified" : "pending"} />
+            <Field label="Action" value={session.current_action} />
+            <Field label="IP address" value={session.ip_address || "—"} />
+            <Field label="Requests" value={String(session.request_count)} />
+            <Field label="Started" value={new Date(session.started_at).toLocaleString()} />
+            <Field label="Expires" value={new Date(session.expires_at).toLocaleString()} />
+            <Field label="Role" value={me.role} />
+            <Field label="Department" value={me.department || "—"} />
+          </dl>
+        </Card>
+      </div>
 
       <button
         onClick={refreshMe}
@@ -73,6 +61,6 @@ export default function SessionPage() {
       >
         Re-verify this session
       </button>
-    </div>
+    </Page>
   );
 }

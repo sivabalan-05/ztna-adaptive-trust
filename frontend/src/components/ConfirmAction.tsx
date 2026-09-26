@@ -45,10 +45,11 @@ export default function ConfirmAction({
 
       {textInput && (
         <>
-          <label className="mt-3 block text-sm font-medium text-slate-700">
+          <label htmlFor="confirm-action-input" className="mt-3 block text-sm font-medium text-slate-700">
             {textInput.label}
           </label>
           <input
+            id="confirm-action-input"
             autoFocus
             value={value}
             placeholder={textInput.placeholder}

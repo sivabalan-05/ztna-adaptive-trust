@@ -20,6 +20,7 @@ import RiskScoresPage from "./pages/RiskScoresPage";
 import SessionPage from "./pages/SessionPage";
 import TrustScorePage from "./pages/TrustScorePage";
 import UsersPage from "./pages/UsersPage";
+import MotionEffects from "./components/MotionEffects";
 
 function TerminatedNotice({
   reason,
@@ -29,8 +30,8 @@ function TerminatedNotice({
   onDismiss: () => void;
 }) {
   return (
-    <div className="flex min-h-full items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md rounded-xl border border-risk-critical/30 bg-white p-8 shadow-sm">
+    <div className="termination-screen">
+      <div className="termination-card">
         <div className="text-lg font-semibold text-risk-critical">
           Session terminated
         </div>
@@ -116,6 +117,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <MotionEffects />
         <Gate />
       </AuthProvider>
     </BrowserRouter>

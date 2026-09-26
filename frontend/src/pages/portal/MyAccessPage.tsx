@@ -220,6 +220,7 @@ export default function MyAccessPage() {
 
   return (
     <Page
+      eyebrow="Your workspace"
       title="My access"
       description="Every resource is re-evaluated against your live trust score. Opening one is a policy decision, recorded in the audit log."
       actions={
