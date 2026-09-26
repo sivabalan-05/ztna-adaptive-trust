@@ -1,7 +1,17 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { collectDeviceSignals } from "../lib/fingerprint";
 
-export const baseURL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const configuredApiUrl =
+  import.meta.env.VITE_API_URL?.trim() ||
+  import.meta.env.VITE_API_BASE_URL?.trim() ||
+  "http://localhost:8000";
+const parsedApiUrl = new URL(configuredApiUrl);
+
+if (parsedApiUrl.protocol !== "http:" && parsedApiUrl.protocol !== "https:") {
+  throw new Error("VITE_API_URL must use http or https.");
+}
+
+export const baseURL = parsedApiUrl.toString().replace(/\/+$/, "");
 
 export const api = axios.create({
   baseURL,
