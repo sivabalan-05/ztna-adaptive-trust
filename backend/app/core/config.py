@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(default_factory=lambda: secrets.token_urlsafe(64))
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
-    refresh_token_expire_days: int = 7
+    refresh_token_expire_days: int = 30
     mfa_issuer: str = "ZTNA Platform"
 
     # --- Persistence --------------------------------------------------------
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     #: without Redis the in-process event bus cannot cross a process boundary,
     #: so the API runs it itself. Set explicitly to override.
     run_verification_in_api: bool | None = None
-    session_idle_timeout_minutes: int = 30
+    session_idle_timeout_minutes: int = 480
     impossible_travel_kmh: float = 900.0
     max_failed_logins: int = 5
     account_lockout_minutes: int = 15

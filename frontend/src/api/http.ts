@@ -16,7 +16,6 @@ export const baseURL = parsedApiUrl.toString().replace(/\/+$/, "");
 export const api = axios.create({
   baseURL,
   timeout: 15_000,
-  headers: { "Content-Type": "application/json" },
 });
 
 /**
