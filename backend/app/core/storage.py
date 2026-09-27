@@ -1,21 +1,17 @@
-"""Resource file storage.
+"""Private local-disk or S3-compatible storage for protected resource files.
 
-Bytes live on disk rather than in the database: SQLite reads a ``LargeBinary``
-fully into memory, and the project's single-file ``ztna.db`` is meant to stay
-small enough to copy around.
-
-Two rules hold everywhere in this module:
-
-* the stored filename is always a server-generated UUID, so a hostile upload
-  name can never influence a path;
-* every read resolves the final path and refuses anything that lands outside
-  the storage root.
+The API always proxies bytes through its policy checks; this module never
+returns a public or presigned object URL. Stored names are generated UUIDs,
+never filenames supplied by an uploader.
 """
 
 from __future__ import annotations
 
+import re
 import uuid
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from app.core.config import settings
 
@@ -65,8 +61,7 @@ def _resolve(relative_path: str) -> Path:
     return candidate
 
 
-def save(data: bytes, content_type: str) -> str:
-    """Write ``data`` under a generated name and return that name."""
+def _validate_upload(data: bytes, content_type: str) -> None:
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise StorageError(
             f"Files of type '{content_type}' are not accepted.", "unsupported_type"
@@ -79,12 +74,107 @@ def save(data: bytes, content_type: str) -> str:
             "file_too_large",
         )
 
-    name = f"{uuid.uuid4().hex}{ALLOWED_CONTENT_TYPES[content_type]}"
+
+def _new_name(content_type: str) -> str:
+    return f"{uuid.uuid4().hex}{ALLOWED_CONTENT_TYPES[content_type]}"
+
+
+def _prefix() -> str:
+    return settings.s3_key_prefix.strip("/")
+
+
+def _s3_key(relative_path: str) -> str:
+    """Accept only generated keys within this app's configured prefix."""
+    prefix = _prefix()
+    if not relative_path or "\\" in relative_path or relative_path.startswith("/"):
+        raise StorageError("Refusing to read outside the storage root.", "path_escape")
+    # Rows created before switching from local disk contain only the generated
+    # UUID filename. Map those safely into the bucket prefix so the API reports
+    # a missing object and lets an admin replace it.
+    if re.fullmatch(r"[0-9a-f]{32}\.[a-z0-9]+", relative_path):
+        return f"{prefix}/{relative_path}"
+    expected_prefix = f"{prefix}/"
+    if not relative_path.startswith(expected_prefix):
+        raise StorageError("Refusing to read outside the storage root.", "path_escape")
+    name = relative_path[len(expected_prefix):]
+    if not re.fullmatch(r"[0-9a-f]{32}\.[a-z0-9]+", name):
+        raise StorageError("Refusing to read outside the storage root.", "path_escape")
+    return relative_path
+
+
+@lru_cache(maxsize=1)
+def _s3_client() -> Any:
+    """Create the S3-compatible client only when remote storage is selected."""
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.s3_endpoint_url,
+        region_name=settings.s3_region,
+        aws_access_key_id=settings.s3_access_key_id,
+        aws_secret_access_key=settings.s3_secret_access_key,
+        config=Config(s3={"addressing_style": settings.s3_addressing_style}),
+    )
+
+
+def _bucket() -> str:
+    return settings.s3_bucket_name
+
+
+def _storage_unavailable() -> StorageError:
+    # Do not leak provider response bodies, endpoint credentials, or bucket
+    # internals into API responses.
+    return StorageError(
+        "Object storage is temporarily unavailable.", "storage_unavailable"
+    )
+
+
+def _is_missing_object(exc: Exception) -> bool:
+    response = getattr(exc, "response", None)
+    if not isinstance(response, dict):
+        return False
+    error = response.get("Error", {})
+    code = str(error.get("Code", "")) if isinstance(error, dict) else ""
+    metadata = response.get("ResponseMetadata", {})
+    status = metadata.get("HTTPStatusCode") if isinstance(metadata, dict) else None
+    return code in {"NoSuchKey", "NotFound", "404"} or status == 404
+
+
+def save(data: bytes, content_type: str) -> str:
+    """Write an upload and return its opaque local name or object key."""
+    _validate_upload(data, content_type)
+    name = _new_name(content_type)
+
+    if settings.resource_storage_backend == "s3":
+        key = f"{_prefix()}/{name}"
+        try:
+            _s3_client().put_object(
+                Bucket=_bucket(), Key=key, Body=data, ContentType=content_type
+            )
+        except Exception as exc:
+            raise _storage_unavailable() from exc
+        return key
+
     (storage_root() / name).write_bytes(data)
     return name
 
 
 def read(relative_path: str) -> bytes:
+    if settings.resource_storage_backend == "s3":
+        key = _s3_key(relative_path)
+        try:
+            response = _s3_client().get_object(Bucket=_bucket(), Key=key)
+            body = response["Body"]
+            try:
+                return body.read()
+            finally:
+                body.close()
+        except Exception as exc:
+            if _is_missing_object(exc):
+                raise StorageError("The stored file is missing.", "file_missing") from exc
+            raise _storage_unavailable() from exc
+
     path = _resolve(relative_path)
     if not path.is_file():
         raise StorageError("The stored file is missing.", "file_missing")
@@ -92,12 +182,26 @@ def read(relative_path: str) -> bytes:
 
 
 def delete(relative_path: str) -> None:
-    """Remove a stored file. Missing files are not an error."""
+    """Delete a stored object; missing objects are harmless."""
+    if settings.resource_storage_backend == "s3":
+        key = _s3_key(relative_path)
+        try:
+            _s3_client().delete_object(Bucket=_bucket(), Key=key)
+        except Exception as exc:
+            raise _storage_unavailable() from exc
+        return
+
     _resolve(relative_path).unlink(missing_ok=True)
 
 
 def clear() -> None:
-    """Remove every stored file. Used by the seeder's ``--reset``."""
+    """Clear local files for seeding; remote object deletion needs manual care."""
+    if settings.resource_storage_backend == "s3":
+        raise StorageError(
+            "Bulk clearing remote objects is disabled. Manage the bucket prefix directly.",
+            "clear_disabled",
+        )
+
     for child in storage_root().iterdir():
         if child.is_file():
             child.unlink()

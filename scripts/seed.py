@@ -1541,6 +1541,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.reset and settings.resource_storage_backend == "s3":
+        print(
+            "Refusing --reset while remote object storage is enabled. "
+            "Switch to local storage or intentionally manage the remote bucket first.",
+            file=sys.stderr,
+        )
+        return 2
     rng = random.Random(args.seed)
     admin_password = args.admin_password or "Admin@Ztna2026!"
 

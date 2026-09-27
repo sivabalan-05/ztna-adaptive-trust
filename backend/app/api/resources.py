@@ -185,14 +185,15 @@ def resource_content(
     try:
         data = storage.read(resource.file_path or "")
     except storage.StorageError as exc:
-        # Commit first: the grant and its audit entry must outlive this 500.
+        # Commit first: the grant and audit entry must outlive the storage error.
         db.commit()
-        logger.error(
-            "Resource %s points at missing file %s", resource.slug, resource.file_path
+        logger.error("Resource %s storage read failed (%s)", resource.slug, exc.code)
+        response_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if exc.code == "storage_unavailable"
+            else status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, exc.message
-        ) from exc
+        raise HTTPException(response_code, exc.message) from exc
 
     return Response(
         content=data,
@@ -470,8 +471,13 @@ async def upload_resource_file(
     try:
         stored_name = storage.save(data, file.content_type or "")
     except storage.StorageError as exc:
+        response_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if exc.code == "storage_unavailable"
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, exc.message
+            response_code, exc.message
         ) from exc
 
     previous = resource.file_path
@@ -486,7 +492,17 @@ async def upload_resource_file(
     # Only once the row points at the new file is the old one removed, so a
     # failure above never leaves the row pointing at nothing.
     if previous and previous != stored_name:
-        storage.delete(previous)
+        try:
+            storage.delete(previous)
+        except storage.StorageError as exc:
+            # The database row already points at the replacement. A stale
+            # object is preferable to failing the upload after the new object
+            # has been stored; operators can clean it up from the bucket.
+            logger.warning(
+                "Could not remove replaced resource object %s (%s)",
+                resource.slug,
+                exc.code,
+            )
 
     AuditService.record(
         db, action="RESOURCE_FILE_UPLOADED", actor_id=principal.user.id,

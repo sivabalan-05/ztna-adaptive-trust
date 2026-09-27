@@ -11,6 +11,7 @@ import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +50,15 @@ class Settings(BaseSettings):
     #: Where uploaded resource files are written. Kept out of the database so
     #: ztna.db stays small and portable; never served statically.
     resource_storage_dir: Path = ROOT_DIR / "storage" / "resources"
+    #: Set to `s3` to use an S3-compatible provider such as Cloudflare R2.
+    resource_storage_backend: Literal["local", "s3"] = "local"
+    s3_bucket_name: str = ""
+    s3_endpoint_url: str = ""
+    s3_region: str = "auto"
+    s3_addressing_style: Literal["auto", "path", "virtual"] = "auto"
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_key_prefix: str = "ztna/resources"
 
     # --- Trust scoring weights (sum must be 100) ----------------------------
     trust_weight_identity: int = 25
@@ -126,6 +136,30 @@ class Settings(BaseSettings):
                 "Risk thresholds must satisfy RISK_HIGH_MIN < RISK_MEDIUM_MIN "
                 "< RISK_LOW_MIN <= 100"
             )
+        if self.resource_storage_backend == "s3":
+            missing = [
+                name for name, value in (
+                    ("S3_BUCKET_NAME", self.s3_bucket_name),
+                    ("S3_ENDPOINT_URL", self.s3_endpoint_url),
+                    ("S3_ACCESS_KEY_ID", self.s3_access_key_id),
+                    ("S3_SECRET_ACCESS_KEY", self.s3_secret_access_key),
+                ) if not value.strip()
+            ]
+            if missing:
+                raise ValueError(
+                    "S3 storage is enabled but required settings are missing: "
+                    + ", ".join(missing)
+                )
+            endpoint = urlsplit(self.s3_endpoint_url)
+            if endpoint.scheme not in {"https", "http"} or not endpoint.netloc:
+                raise ValueError("S3_ENDPOINT_URL must be an HTTP(S) endpoint URL")
+            if self.app_env == "production" and endpoint.scheme != "https":
+                raise ValueError("S3_ENDPOINT_URL must use HTTPS in production")
+            prefix_parts = self.s3_key_prefix.strip("/").split("/")
+            if not self.s3_key_prefix.strip() or any(
+                part in {"", ".", ".."} for part in prefix_parts
+            ):
+                raise ValueError("S3_KEY_PREFIX must be a safe, non-empty path")
         return self
 
     @property

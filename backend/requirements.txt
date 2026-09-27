@@ -30,6 +30,7 @@ joblib>=1.4
 # External services
 geoip2>=4.8
 httpx>=0.28
+boto3>=1.35,<2
 
 # Tests
 pytest>=8.3
