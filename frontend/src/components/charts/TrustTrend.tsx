@@ -2,7 +2,7 @@ import {
   CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import { GRID, INK_MUTED, riskColor, TREND_COLOR } from "./palette";
+import { GRID, INK_MUTED, riskColor, TOOLTIP_STYLE, TREND_COLOR } from "./palette";
 
 interface Point {
   at: string;
@@ -77,20 +77,16 @@ export default function TrustTrend({
         <Tooltip
           labelFormatter={(t) => new Date(Number(t)).toLocaleString()}
           formatter={(value: number) => [value.toFixed(1), label]}
-          contentStyle={{
-            borderRadius: 8,
-            border: "1px solid #d9dbd6",
-            fontSize: 12,
-          }}
+          contentStyle={TOOLTIP_STYLE}
           cursor={{ stroke: INK_MUTED, strokeDasharray: "3 3" }}
         />
         <Line
           type="monotone"
           dataKey="score"
           stroke={TREND_COLOR}
-          strokeWidth={2}
+          strokeWidth={2.5}
           dot={false}
-          activeDot={{ r: 4, strokeWidth: 2, stroke: "#fafaf7" }}
+          activeDot={{ r: 5, strokeWidth: 2, stroke: "#0e131d" }}
           isAnimationActive={false}
         />
       </LineChart>

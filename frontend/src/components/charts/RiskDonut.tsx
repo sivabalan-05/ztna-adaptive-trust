@@ -1,5 +1,5 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { RISK_ORDER, riskColor } from "./palette";
+import { RISK_ORDER, riskColor, TOOLTIP_STYLE } from "./palette";
 
 interface Slice {
   level: string;
@@ -49,7 +49,7 @@ export default function RiskDonut({
               startAngle={90}
               endAngle={-270}
               paddingAngle={2}
-              stroke="#fafaf7"
+              stroke="#0e131d"
               strokeWidth={2}
               isAnimationActive={false}
             >
@@ -62,11 +62,7 @@ export default function RiskDonut({
                 `${value} session${value === 1 ? "" : "s"}`,
                 name,
               ]}
-              contentStyle={{
-                borderRadius: 8,
-                border: "1px solid #d9dbd6",
-                fontSize: 12,
-              }}
+              contentStyle={TOOLTIP_STYLE}
             />
           </PieChart>
         </ResponsiveContainer>

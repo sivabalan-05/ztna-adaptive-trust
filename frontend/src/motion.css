@@ -17,54 +17,6 @@
   will-change: transform;
 }
 
-.custom-cursor {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  margin: -17px 0 0 -17px;
-  place-items: center;
-  opacity: 0;
-  transition: opacity .16s ease;
-  will-change: transform;
-}
-
-.custom-cursor.cursor-visible { opacity: 1; }
-.cursor-ring {
-  position: absolute;
-  inset: 0;
-  border: 1.5px solid #34383b;
-  border-radius: 50%;
-  background: rgb(250 250 247 / .12);
-  box-shadow: 0 2px 8px rgb(37 40 43 / .2), inset 0 0 0 1px rgb(250 250 247 / .48);
-  transition: transform .18s cubic-bezier(.2, .8, .2, 1), border-color .18s ease, background .18s ease;
-}
-.cursor-center {
-  z-index: 1;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #d95736;
-  box-shadow: 0 0 0 2px rgb(250 250 247 / .9), 0 1px 4px rgb(37 40 43 / .25);
-  transition: transform .18s cubic-bezier(.2, .8, .2, 1), background .18s ease;
-}
-.custom-cursor.cursor-hovering .cursor-ring {
-  transform: scale(1.38);
-  border-color: #d95736;
-  background: rgb(217 87 54 / .11);
-}
-.custom-cursor.cursor-hovering .cursor-center {
-  transform: scale(1.35);
-  background: #f16a45;
-}
-.custom-cursor.cursor-pressed .cursor-ring { transform: scale(.72); }
-
-@media (pointer: fine) {
-  html, html *, body, body * { cursor: none !important; }
-}
-
 .tap-ripple {
   position: absolute;
   width: 12px;
@@ -102,16 +54,12 @@ body.motion-ready [data-scroll-reveal].motion-visible {
 }
 
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .surface-panel:hover,
-  .metric-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 30px rgb(37 40 43 / .07);
-  }
+  .metric-card:hover { transform: translateY(-3px); }
+  .surface-panel:hover { border-color: rgb(255 255 255 / .16); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .scroll-progress, .ripple-layer { display: none; }
-  .cursor-ring, .cursor-center { transition: none; }
   body.motion-ready [data-scroll-reveal].motion-observed { opacity: 1; transform: none; transition: none; }
   .surface-panel, .metric-card { transition: none; }
 }

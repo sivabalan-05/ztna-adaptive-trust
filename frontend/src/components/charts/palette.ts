@@ -6,20 +6,30 @@
  * the meaning by itself.
  */
 export const RISK_COLOR: Record<string, string> = {
-  LOW: "#347354",
-  MEDIUM: "#986712",
-  HIGH: "#c35b35",
-  CRITICAL: "#a7353f",
+  LOW: "#34d399",
+  MEDIUM: "#fbbf24",
+  HIGH: "#fb923c",
+  CRITICAL: "#f87171",
 };
 
 export const RISK_ORDER = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
 /** Single hue for magnitude: trust over time, factor contributions. */
-export const TREND_COLOR = "#d95736";
+export const TREND_COLOR = "#ff7a52";
 
 /** Recessive chart chrome. */
-export const GRID = "#dedfda";
-export const INK_MUTED = "#747a7a";
+export const GRID = "#232d42";
+export const INK_MUTED = "#8d99b0";
+
+/** Dark tooltip surface shared by every chart. */
+export const TOOLTIP_STYLE = {
+  background: "#0e131d",
+  border: "1px solid rgba(255, 255, 255, 0.14)",
+  borderRadius: 10,
+  color: "#eef2f8",
+  fontSize: 12,
+  boxShadow: "0 18px 40px rgba(0, 0, 0, 0.55)",
+} as const;
 
 export function riskColor(level: string | null | undefined): string {
   return RISK_COLOR[level ?? ""] ?? INK_MUTED;
