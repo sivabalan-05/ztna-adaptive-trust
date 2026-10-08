@@ -118,6 +118,8 @@ export const uploadResourceFile = (slug: string, file: File) => {
   const form = new FormData();
   form.append("file", file);
   return api
-    .post<ResourceSummary>(`/api/resources/${slug}/file`, form)
+    .post<ResourceSummary>(`/api/resources/${slug}/file`, form, {
+      timeout: 120_000,
+    })
     .then((r) => r.data);
 };
