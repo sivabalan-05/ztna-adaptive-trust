@@ -86,7 +86,7 @@ export default function TrustTrend({
           stroke={TREND_COLOR}
           strokeWidth={2.5}
           dot={false}
-          activeDot={{ r: 5, strokeWidth: 2, stroke: "#0e131d" }}
+          activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--paper)" }}
           isAnimationActive={false}
         />
       </LineChart>

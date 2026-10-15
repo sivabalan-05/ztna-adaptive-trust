@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useLive } from "../../live/LiveContext";
+import ThemeToggle from "../ThemeToggle";
 
 const GROUPS = [
   {
@@ -105,6 +106,7 @@ export default function AppShell() {
         <header className="app-topbar">
           <div className="topbar-context">Control plane <span aria-hidden="true">/</span> {pageName}</div>
           <div className="topbar-right">
+            <ThemeToggle />
             <span className="topbar-date">{new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
             <span className="topbar-live" title={streamTitle}>
               <span className={`stream-dot ${status === "open" ? "is-open" : status === "connecting" ? "is-connecting" : ""}`} aria-hidden="true" />

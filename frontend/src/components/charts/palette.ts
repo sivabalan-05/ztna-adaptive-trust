@@ -6,29 +6,32 @@
  * the meaning by itself.
  */
 export const RISK_COLOR: Record<string, string> = {
-  LOW: "#34d399",
-  MEDIUM: "#fbbf24",
-  HIGH: "#fb923c",
-  CRITICAL: "#f87171",
+  LOW: "var(--risk-low)",
+  MEDIUM: "var(--risk-medium)",
+  HIGH: "var(--risk-high)",
+  CRITICAL: "var(--risk-critical)",
 };
 
 export const RISK_ORDER = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
 /** Single hue for magnitude: trust over time, factor contributions. */
-export const TREND_COLOR = "#ff7a52";
+export const TREND_COLOR = "var(--chart-trend)";
 
-/** Recessive chart chrome. */
-export const GRID = "#232d42";
-export const INK_MUTED = "#8d99b0";
+/**
+ * Chart colours are CSS variables (defined per theme in index.css), so charts
+ * follow the dark/light switch without re-rendering.
+ */
+export const GRID = "var(--chart-grid)";
+export const INK_MUTED = "var(--chart-muted)";
 
-/** Dark tooltip surface shared by every chart. */
+/** Tooltip surface shared by every chart. */
 export const TOOLTIP_STYLE = {
-  background: "#0e131d",
-  border: "1px solid rgba(255, 255, 255, 0.14)",
+  background: "var(--tooltip-bg)",
+  border: "1px solid var(--tooltip-border)",
   borderRadius: 10,
-  color: "#eef2f8",
+  color: "var(--ink)",
   fontSize: 12,
-  boxShadow: "0 18px 40px rgba(0, 0, 0, 0.55)",
+  boxShadow: "var(--tooltip-shadow)",
 } as const;
 
 export function riskColor(level: string | null | undefined): string {

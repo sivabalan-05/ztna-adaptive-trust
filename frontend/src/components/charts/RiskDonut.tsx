@@ -49,7 +49,7 @@ export default function RiskDonut({
               startAngle={90}
               endAngle={-270}
               paddingAngle={2}
-              stroke="#0e131d"
+              stroke="var(--paper)"
               strokeWidth={2}
               isAnimationActive={false}
             >

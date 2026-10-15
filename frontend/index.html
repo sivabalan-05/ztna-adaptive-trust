@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#070a11" />
+    <script>
+      // Apply the saved theme before first paint so reloads never flash the other one.
+      // Dark is the default. Keep the key in sync with src/lib/theme.ts.
+      (function () {
+        var theme = "dark";
+        try {
+          if (localStorage.getItem("ztna-theme") === "light") theme = "light";
+        } catch (e) {}
+        document.documentElement.dataset.theme = theme;
+        if (theme === "light") {
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", "#f3f5f9");
+        }
+      })();
+    </script>
     <meta name="description" content="Penetration Protector Zero Trust Access Control Plane" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

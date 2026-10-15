@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useLive } from "../../live/LiveContext";
+import ThemeToggle from "../ThemeToggle";
 
 const NAV = [
   { to: "/", label: "My access", glyph: "◫", end: true },
@@ -72,6 +73,7 @@ export default function PortalShell() {
         <header className="app-topbar">
           <div className="topbar-context">My workspace <span aria-hidden="true">/</span> {pageName}</div>
           <div className="topbar-right">
+            <ThemeToggle />
             <span className="topbar-live">
               <span className={`stream-dot ${status === "open" ? "is-open" : status === "connecting" ? "is-connecting" : ""}`} aria-hidden="true" />
               {status === "open" ? "Protection active" : status}

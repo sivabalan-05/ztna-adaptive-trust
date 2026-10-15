@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { collectDeviceSignals } from "../lib/fingerprint";
 import SignalScene from "../components/SignalScene";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function LoginPage() {
   const {
@@ -65,6 +66,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-screen">
+      <ThemeToggle floating />
       <section className="login-story" aria-label="Platform overview">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">Z</div>
