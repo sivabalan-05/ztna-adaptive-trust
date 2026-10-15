@@ -106,10 +106,21 @@ api.interceptors.response.use(
   },
 );
 
+/** One FastAPI request-validation item, e.g. `{ loc: ["body", "email"], msg: "…" }`. */
+function validationIssue(item: unknown): string {
+  const { loc, msg } = (item ?? {}) as { loc?: unknown[]; msg?: string };
+  const field = Array.isArray(loc) ? loc.filter((part) => part !== "body").join(".") : "";
+  return field ? `${field}: ${msg ?? "invalid"}` : (msg ?? "invalid value");
+}
+
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
-    const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
-    if (detail) return detail;
+    const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+    if (typeof detail === "string" && detail) return detail;
+    // Validation failures arrive as a list of items rather than a sentence.
+    if (Array.isArray(detail) && detail.length > 0) {
+      return detail.map(validationIssue).join("; ");
+    }
     if (!error.response) return "Cannot reach the API. Is the backend running?";
   }
   return fallback;

@@ -351,6 +351,29 @@ export const getRoles = () =>
 export const updateUser = (id: string, body: Record<string, unknown>) =>
   api.patch<UserRow>(`/api/users/${id}`, body).then((r) => r.data);
 
+/** Body of the admin-only user-creation route. */
+export interface NewUser {
+  username: string;
+  email: string;
+  full_name: string;
+  password: string;
+  role: string;
+  department: string;
+  home_city: string;
+}
+
+export interface CreatedUser {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  department: string;
+  role: string;
+}
+
+export const createUser = (body: NewUser) =>
+  api.post<CreatedUser>("/api/auth/register", body).then((r) => r.data);
+
 export const getAllDevices = (status?: string) =>
   api
     .get<DeviceInfo[]>(`/api/devices${status ? `?status=${status}` : ""}`)

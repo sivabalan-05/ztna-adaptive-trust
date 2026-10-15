@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   approveDevice, getAllDevices, getRoles, getUsers, revokeDevice, updateUser,
-  type DeviceInfo, type RoleRow, type UserRow,
+  type CreatedUser, type DeviceInfo, type RoleRow, type UserRow,
 } from "../api/client";
 import { usePermissions } from "../auth/usePermissions";
+import AddUserPanel from "../components/AddUserPanel";
 import Page, { Card, Empty, RiskChip } from "../components/layout/Page";
 
 export default function UsersPage() {
-  const { can } = usePermissions();
+  const { can, isAdmin } = usePermissions();
+  const [adding, setAdding] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
@@ -42,6 +45,13 @@ export default function UsersPage() {
     load();
   }
 
+  function handleCreated(user: CreatedUser) {
+    setError(null);
+    setNotice(`Created ${user.username} (${user.role}).`);
+    setTab("users");
+    load();
+  }
+
   const pending = devices.filter((d) => d.status === "PENDING").length;
 
   return (
@@ -49,17 +59,45 @@ export default function UsersPage() {
       title="Users & devices"
       description="Roles set the clearance ceiling — no trust score lifts a role above it. Devices are trusted on first use and await approval."
       actions={
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search users…"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-        />
+        <>
+          {isAdmin && !adding && (
+            <button
+              type="button"
+              onClick={() => {
+                setNotice(null);
+                setAdding(true);
+              }}
+              className="rounded-lg bg-shell px-4 py-2 text-sm font-medium text-white"
+            >
+              + Add user
+            </button>
+          )}
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search users…"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+          />
+        </>
       }
     >
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 px-4 py-2.5 text-sm text-risk-critical">
           {error}
+        </div>
+      )}
+      {notice && !adding && (
+        <div role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
+          {notice}
+        </div>
+      )}
+      {isAdmin && adding && (
+        <div className="mb-4">
+          <AddUserPanel
+            roles={roles}
+            onCreated={handleCreated}
+            onClose={() => setAdding(false)}
+          />
         </div>
       )}
 
