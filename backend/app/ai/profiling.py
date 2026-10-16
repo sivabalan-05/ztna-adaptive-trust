@@ -219,9 +219,23 @@ def build_signals(
 
     started = as_aware(session.started_at) or now
     duration_min = max(0.0, (now - started).total_seconds() / 60.0)
+
+    # The behavioural request rate counts resource accesses only. It must not use
+    # session.request_count: that also counts every call the console itself makes
+    # (polling, the WebSocket ticket, and the "Re-verify now" click), so measuring
+    # it made the score fall each time someone looked at it.
+    from app.models.access_request import AccessRequest
+
+    access_count = int(
+        db.scalar(
+            select(func.count(AccessRequest.id)).where(
+                AccessRequest.session_id == session.id
+            )
+        )
+        or 0
+    )
     requests_per_minute = (
-        session.request_count / duration_min if duration_min >= 1.0
-        else float(session.request_count)
+        access_count / duration_min if duration_min >= 1.0 else float(access_count)
     )
 
     # --- device ------------------------------------------------------------
