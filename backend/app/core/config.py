@@ -97,6 +97,12 @@ class Settings(BaseSettings):
 
     # --- External services (optional; mocks are used when unset) ------------
     geoip_db_path: Path = ROOT_DIR / "data" / "GeoLite2-City.mmdb"
+    #: Place public addresses the local providers cannot, through ipwho.is. None
+    #: means automatic: on in production, off everywhere else, so tests and
+    #: air-gapped runs never make a network call. The address is sent to that
+    #: service; set GEOIP_ONLINE=false to keep every lookup local.
+    geoip_online: bool | None = None
+    geoip_online_timeout_s: float = 1.5
     abuseipdb_api_key: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587
@@ -180,6 +186,13 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
+
+    @property
+    def geoip_online_enabled(self) -> bool:
+        """Whether unknown public addresses may be resolved over the network."""
+        if self.geoip_online is not None:
+            return self.geoip_online
+        return self.app_env == "production"
 
     @property
     def trust_weights(self) -> dict[str, int]:

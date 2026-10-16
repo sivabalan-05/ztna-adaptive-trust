@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import threading
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -257,14 +259,106 @@ class MaxMindGeoIP:
         )
 
 
+def _is_public(ip: str) -> bool:
+    """True only for a real, globally routable address (never a hostname)."""
+    try:
+        return ipaddress.ip_address(ip).is_global
+    except ValueError:
+        return False
+
+
+#: Positive answers are kept a day, failures ten minutes, so a service outage
+#: neither hammers the provider nor pins an address as "unknown" for long.
+_ONLINE_TTL_OK = 24 * 3600.0
+_ONLINE_TTL_FAILED = 600.0
+_ONLINE_CACHE_MAX = 4096
+
+
+class OnlineGeoIP:
+    """Resolves public addresses the wrapped provider cannot place.
+
+    The wrapped provider answers first (private ranges, the demo prefix table,
+    GeoLite2 when present). Only a public address that is still unresolved is
+    looked up through ipwho.is, which needs no key. The address is sent to that
+    service, so this is opt-in outside production (see ``geoip_online``). Any
+    failure leaves the location unresolved, exactly as before.
+    """
+
+    URL = "https://ipwho.is/{ip}"
+
+    def __init__(self, base: GeoIPProvider, timeout: float) -> None:
+        self._base = base
+        self._timeout = timeout
+        self._cache: dict[str, tuple[float, GeoLocation | None]] = {}
+        self._lock = threading.Lock()
+        self.info = ProviderInfo(
+            name=f"{base.info.name}+ipwho.is",
+            live=True,
+            detail=(
+                f"{base.info.detail} Public addresses it cannot place are looked "
+                "up through ipwho.is and cached."
+            ),
+        )
+
+    def lookup(self, ip: str) -> GeoLocation:
+        known = self._base.lookup(ip)
+        if known.resolved or not _is_public(ip):
+            return known
+        return self._online(ip) or known
+
+    def _online(self, ip: str) -> GeoLocation | None:
+        now = time.monotonic()
+        with self._lock:
+            cached = self._cache.get(ip)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+
+        result = self._fetch(ip)
+        ttl = _ONLINE_TTL_OK if result is not None else _ONLINE_TTL_FAILED
+        with self._lock:
+            if len(self._cache) >= _ONLINE_CACHE_MAX:
+                self._cache.clear()
+            self._cache[ip] = (now + ttl, result)
+        return result
+
+    def _fetch(self, ip: str) -> GeoLocation | None:
+        import httpx
+
+        try:
+            response = httpx.get(self.URL.format(ip=ip), timeout=self._timeout)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:  # noqa: BLE001 - any failure means "unresolved"
+            logger.warning("Online geolocation failed for %s: %s", ip, exc)
+            return None
+
+        latitude, longitude = data.get("latitude"), data.get("longitude")
+        if not data.get("success") or latitude is None or longitude is None:
+            return None
+        connection = data.get("connection") or {}
+        asn = connection.get("asn")
+        return GeoLocation(
+            ip=ip,
+            country=str(data.get("country_code") or ""),
+            country_name=str(data.get("country") or ""),
+            city=str(data.get("city") or ""),
+            latitude=float(latitude),
+            longitude=float(longitude),
+            asn=f"AS{asn}" if asn else "",
+            isp=str(connection.get("isp") or connection.get("org") or ""),
+            resolved=True,
+            provider="ipwho.is",
+        )
+
+
 @lru_cache(maxsize=1)
 def get_provider() -> GeoIPProvider:
     path = Path(settings.geoip_db_path)
+    provider: GeoIPProvider | None = None
     if path.exists():
         try:
             provider = MaxMindGeoIP(path)
             logger.info("GeoIP: using %s", provider.info.detail)
-            return provider
         except Exception:
             logger.exception(
                 "GeoLite2 database at %s could not be opened; using the offline "
@@ -274,7 +368,13 @@ def get_provider() -> GeoIPProvider:
         logger.info(
             "No GeoLite2 database at %s; using the offline prefix table.", path
         )
-    return OfflineGeoIP()
+    if provider is None:
+        provider = OfflineGeoIP()
+
+    if settings.geoip_online_enabled:
+        logger.info("GeoIP: unknown public addresses will be resolved via ipwho.is")
+        return OnlineGeoIP(provider, settings.geoip_online_timeout_s)
+    return provider
 
 
 def lookup(ip: str) -> GeoLocation:
