@@ -289,6 +289,56 @@ def test_admin_revocation_takes_effect_on_the_next_request(
     assert "revoked" in response.json()["detail"].lower()
 
 
+# --- one live session per device -------------------------------------------
+
+def test_signing_in_again_on_the_same_device_supersedes_the_old_session(
+    client: TestClient, user: User, db: Session
+) -> None:
+    first = sign_in(client, user)
+    second = sign_in(client, user)
+
+    assert client.get("/api/auth/me", headers=auth_headers(first)).status_code == 401
+    assert client.get("/api/auth/me", headers=auth_headers(second)).status_code == 200
+
+    old = db.get(UserSession, uuid.UUID(first["session_id"]))
+    db.refresh(old)
+    assert old.status is SessionStatus.REVOKED
+    assert old.revoked_reason == "Signed in again on this device."
+
+    live = db.scalars(
+        select(UserSession).where(
+            UserSession.user_id == user.id,
+            UserSession.status == SessionStatus.ACTIVE,
+        )
+    ).all()
+    assert [row.id for row in live] == [uuid.UUID(second["session_id"])]
+
+
+def test_signing_in_from_another_device_keeps_the_first_session(
+    client: TestClient, user: User
+) -> None:
+    first = sign_in(client, user)
+    client.headers["X-Device-Fingerprint"] = OTHER_FINGERPRINT
+    second = sign_in(client, user)
+
+    # Different devices, so both sessions stay live.
+    first_headers = auth_headers(first) | {"X-Device-Fingerprint": DEVICE_FINGERPRINT}
+    assert client.get("/api/auth/me", headers=first_headers).status_code == 200
+    assert client.get("/api/auth/me", headers=auth_headers(second)).status_code == 200
+
+
+def test_superseding_a_session_never_touches_another_users_session(
+    client: TestClient, user: User, admin: User
+) -> None:
+    admin_tokens = sign_in(client, admin)
+    sign_in(client, user)
+    sign_in(client, user)
+
+    assert (
+        client.get("/api/auth/me", headers=auth_headers(admin_tokens)).status_code == 200
+    )
+
+
 # --- refresh rotation ------------------------------------------------------
 
 def test_refresh_rotates_both_tokens(client: TestClient, user: User) -> None:

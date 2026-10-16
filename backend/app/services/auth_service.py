@@ -418,6 +418,30 @@ class AuthService:
         user.failed_login_count = 0
         db.flush()
 
+        # One live session per user per device. Signing in again on the same
+        # browser supersedes the earlier session; without this, an abandoned
+        # session stays "active" for the whole idle timeout and the console
+        # reports more live sessions than there are devices.
+        if session.device_id is not None:
+            # Imported here for the same reason as TrustService below: the
+            # session service calls back into this module.
+            from app.services.session_service import SessionService
+
+            superseded = db.scalars(
+                select(UserSession).where(
+                    UserSession.user_id == user.id,
+                    UserSession.device_id == session.device_id,
+                    UserSession.id != session.id,
+                    UserSession.status == SessionStatus.ACTIVE,
+                )
+            ).all()
+            for previous in superseded:
+                SessionService.revoke(
+                    db, previous,
+                    reason="Signed in again on this device.",
+                    actor_label="system",
+                )
+
         # Score the session now that authentication is complete. Imported here
         # rather than at module scope because the trust engine calls back into
         # this service to revoke a CRITICAL session.

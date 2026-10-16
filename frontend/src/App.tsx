@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppShell from "./components/layout/AppShell";
@@ -55,6 +55,11 @@ function TerminatedNotice({
 function Gate() {
   const { me, loading, terminated, clearTermination } = useAuth();
   const [dismissed, setDismissed] = useState(false);
+  // A notice dismissed earlier must not hide the next one: once someone is signed
+  // in again, the next termination has to explain itself.
+  useEffect(() => {
+    if (me) setDismissed(false);
+  }, [me]);
 
   if (loading) {
     return (

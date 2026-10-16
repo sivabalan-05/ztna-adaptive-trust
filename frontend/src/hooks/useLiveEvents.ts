@@ -33,6 +33,10 @@ export function useLiveEvents(enabled: boolean): UseLiveEvents {
   const retryRef = useRef(0);
   const timerRef = useRef<number | null>(null);
   const stoppedRef = useRef(false);
+  // This browser's own session id, learned from the server's "connected" message.
+  // Operators receive events for every session, so an end-of-session event must be
+  // matched against this before it is treated as "my session was terminated".
+  const ownSessionRef = useRef<string | null>(null);
 
   const connect = useCallback(async () => {
     if (stoppedRef.current) return;
@@ -55,13 +59,24 @@ export function useLiveEvents(enabled: boolean): UseLiveEvents {
           setLastHeartbeat(new Date());
           return;
         }
+        if (event.type === "connected") {
+          ownSessionRef.current = String(event.payload.session_id ?? "") || null;
+        }
         setLastEvent(event);
         setEvents((previous) => [event, ...previous].slice(0, 50));
 
+        // An operator's stream carries every session's events. Only an event
+        // about this browser's own session may end it; revoking someone else's
+        // session must leave the admin signed in.
+        const endsMySession =
+          ownSessionRef.current !== null &&
+          String(event.payload.session_id ?? "") === ownSessionRef.current;
+
         if (
-          event.type === "session.terminated" ||
-          event.type === "session.revoked" ||
-          event.type === "session.expired"
+          endsMySession &&
+          (event.type === "session.terminated" ||
+            event.type === "session.revoked" ||
+            event.type === "session.expired")
         ) {
           const reason = String(event.payload.reason ?? "Session ended.");
           stoppedRef.current = true;
