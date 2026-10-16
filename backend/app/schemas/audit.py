@@ -19,6 +19,9 @@ class AuditRecordOut(BaseModel):
     resource_type: str
     resource_id: str
     ip_address: str
+    #: Where the event came from ("Coimbatore, IN"), worked out when the page is
+    #: read. It is not stored, so it never affects the hash chain.
+    location: str = ""
     payload: dict[str, Any]
     payload_hash: str
     prev_hash: str

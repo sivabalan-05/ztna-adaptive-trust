@@ -300,6 +300,11 @@ class OnlineGeoIP:
             ),
         )
 
+    @property
+    def local(self) -> GeoIPProvider:
+        """The wrapped provider, which never makes a network call."""
+        return self._base
+
     def lookup(self, ip: str) -> GeoLocation:
         known = self._base.lookup(ip)
         if known.resolved or not _is_public(ip):
@@ -379,3 +384,14 @@ def get_provider() -> GeoIPProvider:
 
 def lookup(ip: str) -> GeoLocation:
     return get_provider().lookup(ip)
+
+
+def lookup_local(ip: str) -> GeoLocation:
+    """Like ``lookup`` but never touches the network.
+
+    For read paths that label many stored addresses at once (the audit page),
+    where a slow lookup per unfamiliar address would stall the whole response.
+    """
+    provider = get_provider()
+    local = provider.local if isinstance(provider, OnlineGeoIP) else provider
+    return local.lookup(ip)

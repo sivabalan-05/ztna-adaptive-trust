@@ -115,7 +115,7 @@ export default function AuditPage() {
             setQuery(e.target.value);
             setOffset(0);
           }}
-          placeholder="Search action, actor, resource…"
+          placeholder="Search action, actor, IP address, resource…"
           className="min-w-64 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
         />
         <select
@@ -153,6 +153,7 @@ export default function AuditPage() {
                     <th className="px-3 py-2 font-medium">#</th>
                     <th className="px-3 py-2 font-medium">When</th>
                     <th className="px-3 py-2 font-medium">Actor</th>
+                    <th className="px-3 py-2 font-medium">Where</th>
                     <th className="px-3 py-2 font-medium">Action</th>
                     <th className="px-3 py-2 font-medium">Resource</th>
                     <th className="px-3 py-2 font-medium">Hash</th>
@@ -179,6 +180,18 @@ export default function AuditPage() {
                         <td className="px-3 py-2 text-slate-700">
                           {r.actor_label}
                         </td>
+                        <td className="px-3 py-2 text-xs">
+                          {r.location || r.ip_address ? (
+                            <>
+                              <div className="text-slate-700">{r.location || "Unknown location"}</div>
+                              {r.ip_address && (
+                                <div className="font-mono text-[11px] text-slate-400">{r.ip_address}</div>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
                             {r.action}
@@ -194,7 +207,7 @@ export default function AuditPage() {
                       </tr>
                       {expanded === r.seq && (
                         <tr className="bg-slate-50">
-                          <td colSpan={6} className="px-3 py-3">
+                          <td colSpan={7} className="px-3 py-3">
                             <pre className="overflow-x-auto text-[11px] leading-relaxed text-slate-700">
                               {JSON.stringify(r.payload, null, 2)}
                             </pre>

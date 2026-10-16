@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import uuid
 from collections.abc import Iterator
 from datetime import datetime
 from typing import Any
@@ -22,8 +23,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import Principal, require_permission
+from app.external import geoip
 from app.models.audit_log import GENESIS_HASH, AuditLog
 from app.models.base import utcnow
+from app.models.session import UserSession
 from app.schemas.audit import (
     AuditPage, AuditRecordOut, AuditStats, ChainVerification,
 )
@@ -49,6 +52,71 @@ def _csv_line(values: list[Any]) -> str:
     buffer = io.StringIO()
     csv.writer(buffer).writerow(values)
     return buffer.getvalue()
+
+
+def _place(city: object, country: object) -> str:
+    return ", ".join(str(part) for part in (city, country) if part)
+
+
+def _location_from_payload(payload: dict[str, Any]) -> str:
+    """City and country recorded inside the event itself, if it has any."""
+    place = _place(payload.get("city"), payload.get("country"))
+    if place:
+        return place
+    network = payload.get("network")
+    if isinstance(network, dict):
+        return _place(network.get("city"), network.get("country"))
+    return ""
+
+
+def _session_id(record: AuditLog) -> uuid.UUID | None:
+    payload = record.payload or {}
+    raw = payload.get("session_id") or (
+        record.resource_id if record.resource_type == "session" else ""
+    )
+    try:
+        return uuid.UUID(str(raw)) if raw else None
+    except ValueError:
+        return None
+
+
+def _label_locations(db: Session, rows: list[AuditLog]) -> dict[int, str]:
+    """Where each record came from, keyed by chain position.
+
+    A request from the server's own network is labelled as such. Otherwise, in
+    order of preference: the event's own payload, the login session it belongs
+    to (which stored its city and country when the user signed in), and a
+    local-only lookup of the address. Nothing here makes a network call, so the
+    page stays fast however many distinct addresses it holds.
+    """
+    wanted = {sid for r in rows if (sid := _session_id(r)) is not None}
+    session_places: dict[uuid.UUID, str] = {}
+    if wanted:
+        # A session opened from the server's own network stores a placeholder
+        # city, so say what it really was instead of repeating the placeholder.
+        session_places = {
+            s.id: (
+                "Local network"
+                if s.ip_address and geoip.lookup_local(s.ip_address).is_private
+                else _place(s.city, s.country)
+            )
+            for s in db.scalars(select(UserSession).where(UserSession.id.in_(wanted)))
+        }
+
+    labels: dict[int, str] = {}
+    for record in rows:
+        geo = geoip.lookup_local(record.ip_address) if record.ip_address else None
+        if geo is not None and geo.is_private:
+            labels[record.seq] = "Local network"
+            continue
+        sid = _session_id(record)
+        label = _location_from_payload(record.payload or {}) or (
+            session_places.get(sid, "") if sid else ""
+        )
+        if not label and geo is not None and geo.resolved:
+            label = geo.label
+        labels[record.seq] = label
+    return labels
 
 
 def _filtered(
@@ -82,6 +150,7 @@ def _filtered(
                 AuditLog.action.ilike(needle),
                 AuditLog.actor_label.ilike(needle),
                 AuditLog.resource_id.ilike(needle),
+                AuditLog.ip_address.ilike(needle),
                 AuditLog.note.ilike(needle),
             )
         )
@@ -112,10 +181,13 @@ def search(
     rows = db.scalars(
         base.order_by(AuditLog.seq.desc()).limit(limit).offset(offset)
     ).all()
-    return AuditPage(
-        total=total, limit=limit, offset=offset,
-        records=[AuditRecordOut.model_validate(r, from_attributes=True) for r in rows],
-    )
+    labels = _label_locations(db, list(rows))
+    records: list[AuditRecordOut] = []
+    for row in rows:
+        record = AuditRecordOut.model_validate(row, from_attributes=True)
+        record.location = labels.get(row.seq, "")
+        records.append(record)
+    return AuditPage(total=total, limit=limit, offset=offset, records=records)
 
 
 @router.get(

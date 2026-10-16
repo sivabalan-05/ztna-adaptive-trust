@@ -308,6 +308,8 @@ export interface AuditRecord {
   resource_type: string;
   resource_id: string;
   ip_address: string;
+  /** Where the event came from, e.g. "Coimbatore, IN"; empty when unknown. */
+  location: string;
   payload: Record<string, unknown>;
   payload_hash: string;
   prev_hash: string;

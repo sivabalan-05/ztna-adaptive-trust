@@ -462,6 +462,9 @@ class AuthService:
             ip_address=context.ip_address,
             payload={
                 "session_id": str(session.id),
+                "ip": context.ip_address,
+                "city": session.city,
+                "country": session.country,
                 "device": device.label if device else None,
                 "device_status": device.status.value if device else None,
                 "mfa": mfa,
