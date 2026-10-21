@@ -90,6 +90,13 @@ class TrustSignals:
     #: fabricated for a brand-new account.
     profile_is_cold: bool = False
 
+    # --- Carried over -----------------------------------------------------
+    #: Ceiling inherited from this account's recent scores in *other* sessions,
+    #: so signing in again does not wipe the slate. None when nothing recent
+    #: was low enough to matter.
+    carried_score_cap: float | None = None
+    carried_from_score: float | None = None
+
 
 @dataclass
 class FactorResult:

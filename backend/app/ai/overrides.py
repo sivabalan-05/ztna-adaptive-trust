@@ -109,9 +109,38 @@ def detect(signals: TrustSignals) -> list[Override]:
     return hits
 
 
+#: Name of the dynamic override that carries a low score into a new session.
+CARRIED_RISK = "carried_risk"
+
+
+def carried_risk(signals: TrustSignals) -> Override | None:
+    """The ceiling an earlier session's score places on this one, if any.
+
+    Most of what lowers a score — denials, enumeration, request bursts — is
+    counted per session, so without this a fresh sign-in would start back at
+    full trust. Unlike the fixed overrides its cap moves: it recovers towards
+    100 over ``trust_carryover_hours``.
+    """
+    cap = signals.carried_score_cap
+    if cap is None:
+        return None
+    return Override(
+        CARRIED_RISK, cap,
+        f"Carried over from an earlier session: this account recently scored "
+        f"{signals.carried_from_score or cap:.0f}, and trust recovers gradually "
+        f"over {settings.trust_carryover_hours} hours instead of resetting at "
+        f"sign-in.",
+    )
+
+
 def apply(score: float, signals: TrustSignals) -> tuple[float, list[Override]]:
     """Clamp the score to the strictest triggered override, if any."""
     hits = detect(signals)
+    carried = carried_risk(signals)
+    # Only report it when it actually lowers the score; otherwise it would
+    # take over the headline of a session that scored low on its own.
+    if carried is not None and carried.cap < min([score] + [o.cap for o in hits]):
+        hits.insert(0, carried)
     if not hits:
         return score, []
     strictest = min(hits, key=lambda o: o.cap)

@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     run_verification_in_api: bool | None = None
     session_idle_timeout_minutes: int = 480
     impossible_travel_kmh: float = 900.0
+    #: A score lost in one session follows the account into the next sign-in
+    #: and recovers linearly to full over this many hours.
+    trust_carryover_hours: int = 24
     max_failed_logins: int = 5
     account_lockout_minutes: int = 15
 

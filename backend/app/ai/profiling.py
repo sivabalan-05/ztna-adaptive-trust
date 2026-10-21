@@ -23,12 +23,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.scoring import TrustSignals
+from app.core.config import settings
 from app.core.context import ContextBundle
 from app.models.base import as_aware, utcnow
 from app.models.behavior_profile import BehaviorProfile
 from app.models.device import Device
 from app.models.enums import DeviceStatus, SessionStatus
 from app.models.session import UserSession
+from app.models.trust_score import TrustScore
 from app.models.user import User
 from app.services.geo_math import haversine_km, travel_velocity_kmh
 
@@ -127,6 +129,61 @@ def previous_session(
         if exclude_id is None or candidate.id != exclude_id:
             return candidate
     return None
+
+
+def _earned_score(row: TrustScore) -> float:
+    """What a recorded evaluation scored on its own merits.
+
+    A score that was itself held down by the carry-over must not be carried
+    again, or every sign-in would restart the recovery clock.
+    """
+    from app.ai.overrides import CARRIED_RISK, OVERRIDES
+
+    for entry in row.factors or []:
+        if not isinstance(entry, dict) or entry.get("factor") != "override":
+            continue
+        signals = entry.get("signals") or {}
+        applied = signals.get("applied_overrides") or []
+        if CARRIED_RISK in applied:
+            caps = [OVERRIDES[name].cap for name in applied if name in OVERRIDES]
+            return min([float(signals.get("weighted_score", 100.0))] + caps)
+    return row.score
+
+
+def carried_score(
+    db: Session, user_id: uuid.UUID, session_id: uuid.UUID
+) -> tuple[float | None, float | None]:
+    """``(cap, source_score)`` inherited from this account's other sessions.
+
+    Each recent low score sets a ceiling that climbs linearly back to 100 over
+    ``trust_carryover_hours``; the strictest wins. The ceiling never drops below
+    the HIGH band on its own: having just re-authenticated, the user is asked
+    to step up, not thrown out again by a session that has already ended.
+    """
+    window = timedelta(hours=settings.trust_carryover_hours)
+    if window.total_seconds() <= 0:
+        return None, None
+    now = utcnow()
+    rows = db.scalars(
+        select(TrustScore)
+        .where(
+            TrustScore.user_id == user_id,
+            TrustScore.session_id != session_id,
+            TrustScore.created_at >= now - window,
+            TrustScore.score < 100.0,
+        )
+        .order_by(TrustScore.score)
+        .limit(200)
+    ).all()
+
+    best: tuple[float | None, float | None] = (None, None)
+    for row in rows:
+        earned = _earned_score(row)
+        age = (now - (as_aware(row.created_at) or now)) / window
+        cap = max(float(settings.risk_high_min), earned + (100.0 - earned) * age)
+        if cap < 100.0 and (best[0] is None or cap < best[0]):
+            best = (round(cap, 2), earned)
+    return best
 
 
 def failed_auth_count_24h(db: Session, user: User) -> int:
@@ -329,7 +386,12 @@ def build_signals(
         else 0
     )
 
+    carried_cap, carried_from = carried_score(db, user.id, session.id)
+
     return TrustSignals(
+        # carried over from earlier sessions
+        carried_score_cap=carried_cap,
+        carried_from_score=carried_from,
         # identity
         mfa_passed=session.mfa_passed,
         mfa_skipped=not session.mfa_passed and session.mfa_failures == 0,
