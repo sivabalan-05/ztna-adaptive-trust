@@ -94,7 +94,35 @@ def test_a_failed_lookup_leaves_the_address_unresolved_and_is_not_retried_at_onc
 
     assert provider.lookup(UNKNOWN_PUBLIC).resolved is False
     assert provider.lookup(UNKNOWN_PUBLIC).resolved is False
-    assert attempts == 1
+    assert attempts == 3, "each service is tried once, then the failure is cached"
+
+
+def test_a_rate_limited_service_falls_back_to_the_next(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Render's shared egress address gets 429 from ipwho.is; ip-api.com answers."""
+    request = httpx.Request("GET", "https://ipwho.is/")
+
+    def get(url: str, timeout: float) -> FakeResponse:
+        if "ipwho.is" in url:
+            raise httpx.HTTPStatusError(
+                "429", request=request, response=httpx.Response(429, request=request)
+            )
+        return FakeResponse(
+            {
+                "status": "success", "countryCode": "IN", "country": "India",
+                "city": "Puducherry", "lat": 11.93, "lon": 79.83,
+                "as": "AS9829 National Internet Backbone",
+                "isp": "Bharat Sanchar Nigam Ltd",
+            }
+        )
+
+    monkeypatch.setattr(httpx, "get", get)
+    located = OnlineGeoIP(OfflineGeoIP(), timeout=1.0).lookup(UNKNOWN_PUBLIC)
+
+    assert located.resolved
+    assert (located.country, located.city, located.asn) == ("IN", "Puducherry", "AS9829")
+    assert located.provider == "ip-api.com"
 
 
 def test_an_unsuccessful_reply_is_treated_as_unresolved(

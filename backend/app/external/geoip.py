@@ -279,12 +279,10 @@ class OnlineGeoIP:
 
     The wrapped provider answers first (private ranges, the demo prefix table,
     GeoLite2 when present). Only a public address that is still unresolved is
-    looked up through ipwho.is, which needs no key. The address is sent to that
-    service, so this is opt-in outside production (see ``geoip_online``). Any
+    looked up online (ipwho.is, then ip-api.com, then geojs.io; none needs a
+    key). The address is sent to those services, so this is opt-in outside production (see ``geoip_online``). Any
     failure leaves the location unresolved, exactly as before.
     """
-
-    URL = "https://ipwho.is/{ip}"
 
     def __init__(self, base: GeoIPProvider, timeout: float) -> None:
         self._base = base
@@ -292,11 +290,11 @@ class OnlineGeoIP:
         self._cache: dict[str, tuple[float, GeoLocation | None]] = {}
         self._lock = threading.Lock()
         self.info = ProviderInfo(
-            name=f"{base.info.name}+ipwho.is",
+            name=f"{base.info.name}+online",
             live=True,
             detail=(
                 f"{base.info.detail} Public addresses it cannot place are looked "
-                "up through ipwho.is and cached."
+                "up online (ipwho.is, ip-api.com, geojs.io) and cached."
             ),
         )
 
@@ -327,33 +325,95 @@ class OnlineGeoIP:
         return result
 
     def _fetch(self, ip: str) -> GeoLocation | None:
+        """Ask each keyless service in turn; the first usable answer wins.
+
+        A single free service is not enough in production: hosts like Render
+        share one egress address across many tenants, and ipwho.is answers
+        that address with 429 once the shared quota is spent.
+        """
         import httpx
 
-        try:
-            response = httpx.get(self.URL.format(ip=ip), timeout=self._timeout)
-            response.raise_for_status()
-            data = response.json()
-        except Exception as exc:  # noqa: BLE001 - any failure means "unresolved"
-            logger.warning("Online geolocation failed for %s: %s", ip, exc)
-            return None
+        for name, url, parse in _ONLINE_SERVICES:
+            try:
+                response = httpx.get(url.format(ip=ip), timeout=self._timeout)
+                response.raise_for_status()
+                located = parse(ip, response.json())
+            except Exception as exc:  # noqa: BLE001 - any failure: try the next
+                logger.warning(
+                    "Online geolocation via %s failed for %s: %s", name, ip, exc
+                )
+                continue
+            if located is not None:
+                return located
+        return None
 
-        latitude, longitude = data.get("latitude"), data.get("longitude")
-        if not data.get("success") or latitude is None or longitude is None:
-            return None
-        connection = data.get("connection") or {}
-        asn = connection.get("asn")
-        return GeoLocation(
-            ip=ip,
-            country=str(data.get("country_code") or ""),
-            country_name=str(data.get("country") or ""),
-            city=str(data.get("city") or ""),
-            latitude=float(latitude),
-            longitude=float(longitude),
-            asn=f"AS{asn}" if asn else "",
-            isp=str(connection.get("isp") or connection.get("org") or ""),
-            resolved=True,
-            provider="ipwho.is",
-        )
+
+def _from_ipwhois(ip: str, data: dict) -> GeoLocation | None:
+    latitude, longitude = data.get("latitude"), data.get("longitude")
+    if not data.get("success") or latitude is None or longitude is None:
+        return None
+    connection = data.get("connection") or {}
+    asn = connection.get("asn")
+    return GeoLocation(
+        ip=ip,
+        country=str(data.get("country_code") or ""),
+        country_name=str(data.get("country") or ""),
+        city=str(data.get("city") or ""),
+        latitude=float(latitude),
+        longitude=float(longitude),
+        asn=f"AS{asn}" if asn else "",
+        isp=str(connection.get("isp") or connection.get("org") or ""),
+        resolved=True,
+        provider="ipwho.is",
+    )
+
+
+def _from_ip_api(ip: str, data: dict) -> GeoLocation | None:
+    latitude, longitude = data.get("lat"), data.get("lon")
+    if data.get("status") != "success" or latitude is None or longitude is None:
+        return None
+    return GeoLocation(
+        ip=ip,
+        country=str(data.get("countryCode") or ""),
+        country_name=str(data.get("country") or ""),
+        city=str(data.get("city") or ""),
+        latitude=float(latitude),
+        longitude=float(longitude),
+        # "AS9829 National Internet Backbone" -> "AS9829"
+        asn=str(data.get("as") or "").split(" ", 1)[0],
+        isp=str(data.get("isp") or data.get("org") or ""),
+        resolved=True,
+        provider="ip-api.com",
+    )
+
+
+def _from_geojs(ip: str, data: dict) -> GeoLocation | None:
+    latitude, longitude = data.get("latitude"), data.get("longitude")
+    if latitude in (None, "") or longitude in (None, ""):
+        return None
+    asn = data.get("asn")
+    return GeoLocation(
+        ip=ip,
+        country=str(data.get("country_code") or ""),
+        country_name=str(data.get("country") or ""),
+        city=str(data.get("city") or ""),
+        latitude=float(latitude),
+        longitude=float(longitude),
+        asn=f"AS{asn}" if asn else "",
+        isp=str(data.get("organization_name") or ""),
+        resolved=True,
+        provider="geojs.io",
+    )
+
+
+#: Tried in order. ip-api.com's free tier is plain HTTP only; it carries just
+#: the address being located, and comes second because it places Indian
+#: addresses more closely than geojs.io does.
+_ONLINE_SERVICES = (
+    ("ipwho.is", "https://ipwho.is/{ip}", _from_ipwhois),
+    ("ip-api.com", "http://ip-api.com/json/{ip}", _from_ip_api),
+    ("geojs.io", "https://get.geojs.io/v1/ip/geo/{ip}.json", _from_geojs),
+)
 
 
 @lru_cache(maxsize=1)
@@ -377,7 +437,7 @@ def get_provider() -> GeoIPProvider:
         provider = OfflineGeoIP()
 
     if settings.geoip_online_enabled:
-        logger.info("GeoIP: unknown public addresses will be resolved via ipwho.is")
+        logger.info("GeoIP: unknown public addresses will be resolved online")
         return OnlineGeoIP(provider, settings.geoip_online_timeout_s)
     return provider
 
