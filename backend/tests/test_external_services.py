@@ -82,6 +82,17 @@ def test_vpn_asn_is_flagged() -> None:
     assert intel.is_datacenter is True
 
 
+def test_proton_vpn_is_flagged() -> None:
+    """Proton VPN's Singapore exit, as seen in a real sign-in."""
+    intel = network_intel.analyse("134.82.69.42", "AS208172", "Proton AG")
+    assert intel.is_vpn is True and intel.is_datacenter is True
+
+
+def test_consumer_vpn_brand_is_flagged_by_operator_name() -> None:
+    intel = network_intel.analyse("203.0.113.9", "AS64500", "Mullvad VPN AB")
+    assert intel.is_vpn is True
+
+
 def test_known_tor_exit_node_is_flagged() -> None:
     intel = network_intel.analyse("197.210.44.9", "AS37282", "Cloud Exit Node")
     assert intel.is_tor is True

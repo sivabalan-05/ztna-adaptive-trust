@@ -74,7 +74,16 @@ _VPN_ASNS: dict[str, str] = {
     "AS51852": "Private Layer (VPN)",
     "AS62240": "Clouvider (VPN)",
     "AS37282": "Cloud Exit Node",
+    "AS208172": "Proton AG (Proton VPN)",
+    "AS39351": "31173 Services AB (Mullvad VPN)",
 }
+
+#: Consumer VPN brands, matched against the operator name for ranges whose ASN
+#: the table above does not list (they rent from many hosting networks).
+_VPN_OPERATOR_WORDS = (
+    "vpn", "proxy", "anonym", "proton", "mullvad", "31173 services", "tefincom",
+    "surfshark", "windscribe", "private internet access", "kape tech",
+)
 
 #: Residential and mobile carriers seen in the seeded Indian corpus.
 _RESIDENTIAL_ASNS: dict[str, str] = {
@@ -157,7 +166,7 @@ def analyse(ip: str, asn: str = "", isp: str = "") -> NetworkIntel:
     # An ISP name is a weaker signal than an ASN, but it catches ranges the
     # tables do not list yet.
     lowered = (isp or "").lower()
-    if not is_vpn and any(word in lowered for word in ("vpn", "proxy", "anonym")):
+    if not is_vpn and any(word in lowered for word in _VPN_OPERATOR_WORDS):
         is_vpn = True
         is_datacenter = True
         reasons.append(f"Network operator name '{isp}' indicates a VPN or proxy.")
