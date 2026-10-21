@@ -65,10 +65,23 @@ def parse_browser(user_agent: str) -> str:
     return "Unknown browser"
 
 
-def parse_os(user_agent: str) -> str:
+#: ``navigator.platform`` values that mean an ARM chip. Desktop Linux is almost
+#: always x86_64, so "Linux" in the user agent plus one of these is a phone.
+_ARM_PLATFORM = re.compile(r"\b(arm|aarch64)", re.IGNORECASE)
+
+
+def parse_os(user_agent: str, platform: str = "") -> str:
+    """The operating system the client reports.
+
+    Chrome's "Desktop site" mode on Android swaps in a desktop user agent
+    ("X11; Linux x86_64") with no mention of Android, but ``navigator.platform``
+    still reports the ARM chip ("Linux armv81"), so that settles it.
+    """
     for pattern, name in _PLATFORMS:
         match = re.search(pattern, user_agent)
         if match:
+            if name == "Linux" and _ARM_PLATFORM.search(platform):
+                return "Android"
             groups = match.groups()
             if groups and groups[0] and groups[0][0].isdigit():
                 return f"{name} {groups[0]}"
@@ -104,7 +117,7 @@ class DeviceService:
         now = utcnow()
         device = cls.get_by_fingerprint(db, user.id, context.fingerprint)
 
-        observed_os = parse_os(context.user_agent)
+        observed_os = parse_os(context.user_agent, context.platform)
         observed_browser = parse_browser(context.user_agent)
 
         if device is None:

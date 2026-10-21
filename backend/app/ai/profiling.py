@@ -212,7 +212,9 @@ def failed_auth_count_24h(db: Session, user: User) -> int:
 _UNPARSED = {"Unknown OS", "Unknown browser", ""}
 
 
-def _os_browser_consistent(device: Device | None, user_agent: str) -> bool:
+def _os_browser_consistent(
+    device: Device | None, user_agent: str, platform: str = ""
+) -> bool:
     """Whether the client still looks like the device this fingerprint belongs to.
 
     Only a *positive* mismatch counts. A missing or unrecognised user agent
@@ -225,7 +227,7 @@ def _os_browser_consistent(device: Device | None, user_agent: str) -> bool:
 
     from app.services.device_service import parse_browser, parse_os
 
-    observed_os, observed_browser = parse_os(user_agent), parse_browser(user_agent)
+    observed_os, observed_browser = parse_os(user_agent, platform), parse_browser(user_agent)
     if observed_os in _UNPARSED or observed_browser in _UNPARSED:
         return True
     if device.os in _UNPARSED or device.browser in _UNPARSED:
@@ -309,7 +311,9 @@ def build_signals(
     device_first_seen_days = (
         (now - (as_aware(device.first_seen_at) or now)).days if device else 0
     )
-    os_consistent = _os_browser_consistent(device, bundle.user_agent)
+    os_consistent = _os_browser_consistent(
+        device, bundle.user_agent, bundle.device.platform if bundle.device else ""
+    )
 
     # --- network -----------------------------------------------------------
     ip_changed = bool(
