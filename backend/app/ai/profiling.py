@@ -156,9 +156,10 @@ def carried_score(
     """``(cap, source_score)`` inherited from this account's other sessions.
 
     Each recent low score sets a ceiling that climbs linearly back to 100 over
-    ``trust_carryover_hours``; the strictest wins. The ceiling never drops below
-    the HIGH band on its own: having just re-authenticated, the user is asked
-    to step up, not thrown out again by a session that has already ended.
+    ``trust_carryover_hours``; the strictest wins. It never drops below the
+    MEDIUM floor: having just re-authenticated, a clean sign-in lands in MEDIUM
+    and a mildly unusual one in HIGH, while one that adds real risk of its own
+    (a VPN, a new country) is pushed into CRITICAL.
     """
     window = timedelta(hours=settings.trust_carryover_hours)
     if window.total_seconds() <= 0:
@@ -170,7 +171,10 @@ def carried_score(
             TrustScore.user_id == user_id,
             TrustScore.session_id != session_id,
             TrustScore.created_at >= now - window,
-            TrustScore.score < 100.0,
+            # Only an incident carries over: a session that fell out of MEDIUM.
+            # A routine 75 (a new device, an odd hour) must not compound into
+            # every later sign-in now that the carry-over scales the score.
+            TrustScore.score < settings.risk_medium_min,
         )
         .order_by(TrustScore.score)
         .limit(200)
@@ -179,8 +183,10 @@ def carried_score(
     best: tuple[float | None, float | None] = (None, None)
     for row in rows:
         earned = _earned_score(row)
+        if earned >= settings.risk_medium_min:
+            continue
         age = (now - (as_aware(row.created_at) or now)) / window
-        cap = max(float(settings.risk_high_min), earned + (100.0 - earned) * age)
+        cap = max(float(settings.risk_medium_min), earned + (100.0 - earned) * age)
         if cap < 100.0 and (best[0] is None or cap < best[0]):
             best = (round(cap, 2), earned)
     return best

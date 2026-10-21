@@ -91,9 +91,9 @@ class TrustSignals:
     profile_is_cold: bool = False
 
     # --- Carried over -----------------------------------------------------
-    #: Ceiling inherited from this account's recent scores in *other* sessions,
-    #: so signing in again does not wipe the slate. None when nothing recent
-    #: was low enough to matter.
+    #: Percentage (0-100) this session's own score is scaled to, inherited from
+    #: the account's recent scores in *other* sessions, so signing in again
+    #: does not wipe the slate. None when nothing recent was low enough.
     carried_score_cap: float | None = None
     carried_from_score: float | None = None
 
